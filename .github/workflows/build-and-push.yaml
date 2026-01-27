@@ -1,0 +1,70 @@
+name: Build and Push Wolfi Java Image
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'images/wolfi-java/wolfi-java.yaml' # Only run when the config changes
+  workflow_dispatch: # Allows manual triggers
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup apko
+        uses: chainguard-dev/actions/setup-apko@main
+
+      - name: Build Image with apko
+        run: |
+          apko build images/wolfi-java/wolfi-java.yaml \
+            mpnt-wolfi-java:latest \
+            output.tar \
+            --arch x86_64
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          input: output.tar
+          severity: 'CRITICAL,HIGH'
+          format: 'table'
+          exit-code: '1'
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Load and Push to Docker Hub
+        run: |
+          docker load < output.tar
+          # Tag with Date and Latest
+          TAG=$(date +%Y%m%d)
+          docker tag mpnt-wolfi-java:latest ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:$TAG
+          docker tag mpnt-wolfi-java:latest ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:$TAG
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@main
+
+      - name: Sign the Image
+        # This uses GitHub's OIDC token to sign the image keylessly
+        run: |
+          TAG=$(date +%Y%m%d)
+          IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
+          
+          # Sign both the date-based tag and latest
+          cosign sign --yes ${IMAGE_NAME}:${TAG}
+          cosign sign --yes ${IMAGE_NAME}:latest
+        env:
+          COSIGN_EXPERIMENTAL: 1 # Required for keyless signing in some versions
+
+      - name: Verify Signature (Audit Step)
+        run: |
+          cosign verify ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
