@@ -61,7 +61,7 @@ jobs:
           cosign sign --yes ${IMAGE_NAME}:${TAG}
           cosign sign --yes ${IMAGE_NAME}:latest
         env:
-          COSIGN_EXPERIMENTAL: 1 # Required for keyless signing in some versions
+          COSIGN_EXPERIMENTAL: 1 # Required for keyless signing in some versions.
 
       - name: Verify Signature (Audit Step)
         run: |
