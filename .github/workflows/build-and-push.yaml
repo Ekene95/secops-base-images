@@ -16,9 +16,13 @@ jobs:
 
       - name: Build with apko
         run: |
-          docker run --rm -v "${{ github.workspace }}":/work \
+          docker run --rm \
+            -v "${{ github.workspace }}":/work \
+            -w /work \
             cgr.dev/chainguard/apko:latest build \
-            apko.yaml wolfi-java:latest output.tar
+            images/wolfi-java/wolfi-java.yaml \
+            mpnt-wolfi-java:latest \
+            output.tar
 
       - name: Run Trivy Vulnerability Scanner
         uses: aquasecurity/trivy-action@master
