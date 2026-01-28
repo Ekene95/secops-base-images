@@ -4,17 +4,21 @@ on:
   push:
     branches: [ master ]
     paths:
-      - 'images/wolfi-java/wolfi-java.yaml' # Only run when the config changes
-  workflow_dispatch: # Allows manual triggers
+      - 'images/wolfi-java/wolfi-java.yaml'
+  workflow_dispatch:
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write 
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Build with apko
+      - name: Build Multi-Arch with apko
         run: |
           docker run --rm \
             -v "${{ github.workspace }}":/work \
@@ -30,14 +34,18 @@ jobs:
       - name: Scan x86_64 Image
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'mpnt-wolfi-java:latest-amd64' # apko tags it -amd64
+          image-ref: 'mpnt-wolfi-java:latest-amd64'
           severity: 'CRITICAL,HIGH'
+          format: 'table'
+          exit-code: '1'
 
       - name: Scan ARM64 Image
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'mpnt-wolfi-java:latest-arm64' # apko tags it -arm64
+          image-ref: 'mpnt-wolfi-java:latest-arm64'
           severity: 'CRITICAL,HIGH'
+          format: 'table'
+          exit-code: '1'
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -45,33 +53,69 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Load and Push to Docker Hub
+      - name: Dynamic Tagging and Push
         run: |
-          docker load < output.tar
-          # Tag with Date and Latest
-          TAG=$(date +%Y%m%d)
-          docker tag mpnt-wolfi-java:latest ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:$TAG
-          docker tag mpnt-wolfi-java:latest ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:$TAG
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest
+          # Extract Java version (e.g., 24.0.1) from the image
+          JAVA_VER=$(docker run --rm mpnt-wolfi-java:latest-amd64 java -version 2>&1 | awk -F '"' '/version/ {print $2}')
+          MAJOR_VER=$(echo $JAVA_VER | cut -d. -f1)
+          DATE_TAG=$(date +%Y%m%d)
+          
+          echo "Detected Java Version: $JAVA_VER"
+          echo "JAVA_FULL_VER=$JAVA_VER" >> $GITHUB_ENV
+          echo "JAVA_MAJOR_VER=$MAJOR_VER" >> $GITHUB_ENV
+          
+          USER=${{ secrets.DOCKERHUB_USERNAME }}
+          REPO="$USER/mpnt-wolfi-java"
+
+          for ARCH in amd64 arm64; do
+            # Tag and push arch-specific images
+            docker tag mpnt-wolfi-java:latest-${ARCH} ${REPO}:${JAVA_VER}-${ARCH}
+            docker tag mpnt-wolfi-java:latest-${ARCH} ${REPO}:${MAJOR_VER}-${ARCH}
+            docker tag mpnt-wolfi-java:latest-${ARCH} ${REPO}:latest-${ARCH}
+            docker tag mpnt-wolfi-java:latest-${ARCH} ${REPO}:${DATE_TAG}-${ARCH}
+            
+            docker push ${REPO}:${JAVA_VER}-${ARCH}
+            docker push ${REPO}:${MAJOR_VER}-${ARCH}
+            docker push ${REPO}:latest-${ARCH}
+            docker push ${REPO}:${DATE_TAG}-${ARCH}
+          done
+
+      - name: Create and Push Multi-Arch Manifests
+        run: |
+          USER=${{ secrets.DOCKERHUB_USERNAME }}
+          REPO="$USER/mpnt-wolfi-java"
+          VER=${{ env.JAVA_FULL_VER }}
+          MAJOR=${{ env.JAVA_MAJOR_VER }}
+          
+          # Create manifests that point to both archs
+          # Full version (e.g., 24.0.1)
+          docker manifest create ${REPO}:${VER} ${REPO}:${VER}-amd64 ${REPO}:${VER}-arm64
+          docker manifest push ${REPO}:${VER}
+          
+          # Major version (e.g., 24)
+          docker manifest create ${REPO}:${MAJOR} ${REPO}:${MAJOR}-amd64 ${REPO}:${MAJOR}-arm64
+          docker manifest push ${REPO}:${MAJOR}
+          
+          # Latest
+          docker manifest create ${REPO}:latest ${REPO}:latest-amd64 ${REPO}:latest-arm64
+          docker manifest push ${REPO}:latest
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@main
 
-      - name: Sign the Image
-        # This uses GitHub's OIDC token to sign the image keylessly
+      - name: Sign the Images
         run: |
-          TAG=$(date +%Y%m%d)
-          IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
+          VER=${{ env.JAVA_FULL_VER }}
           
-          # Sign both the date-based tag and latest
-          cosign sign --yes ${IMAGE_NAME}:${TAG}
-          cosign sign --yes ${IMAGE_NAME}:latest
-        env:
-          COSIGN_EXPERIMENTAL: 1 # Required for keyless signing in some versions.
+          # Sign the individual arch images and the main manifest index
+          cosign sign --yes ${REPO}:${VER}-amd64
+          cosign sign --yes ${REPO}:${VER}-arm64
+          cosign sign --yes ${REPO}:${VER}
+          cosign sign --yes ${REPO}:latest
 
       - name: Verify Signature (Audit Step)
         run: |
-          cosign verify ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest \
+          cosign verify ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:${{ env.JAVA_FULL_VER }} \
             --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
