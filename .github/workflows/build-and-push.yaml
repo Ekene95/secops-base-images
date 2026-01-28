@@ -17,7 +17,7 @@ jobs:
       - name: Build with apko
         run: |
           docker run --rm -v "${{ github.workspace }}":/work \
-            cgr.dev/chainguard/apko build \
+            cgr.dev/chainguard/apko:latest build \
             apko.yaml wolfi-java:latest output.tar
 
       - name: Run Trivy Vulnerability Scanner
