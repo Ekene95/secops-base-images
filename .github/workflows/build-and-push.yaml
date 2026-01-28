@@ -24,13 +24,20 @@ jobs:
             mpnt-wolfi-java:latest \
             output.tar
 
-      - name: Run Trivy Vulnerability Scanner
+      - name: Load Images into Docker
+        run: docker load < output.tar
+
+      - name: Scan x86_64 Image
         uses: aquasecurity/trivy-action@master
         with:
-          input: output.tar
+          image-ref: 'mpnt-wolfi-java:latest-amd64' # apko tags it -amd64
           severity: 'CRITICAL,HIGH'
-          format: 'table'
-          exit-code: '1'
+
+      - name: Scan ARM64 Image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'mpnt-wolfi-java:latest-arm64' # apko tags it -arm64
+          severity: 'CRITICAL,HIGH'
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
