@@ -10,59 +10,71 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-push:
+  # --- JOB 1: Parallel Security Scanning ---
+  scan-architectures:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write 
-
+    strategy:
+      fail-fast: true # If one arch is vulnerable, stop everything immediately
+      matrix:
+        arch: [x86_64, aarch64]
+        include:
+          - arch: x86_64
+            tar: amd64.tar
+          - arch: aarch64
+            tar: arm64.tar
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Build Locally with apko
+      - name: Build ${{ matrix.arch }} Locally
         run: |
-          # Build to a local tarball for scanning
-          docker run --rm \
-            -v "${{ github.workspace }}":/work \
-            -w /work \
+          docker run --rm -v "${{ github.workspace }}":/work -w /work \
             cgr.dev/chainguard/apko:latest build \
             images/wolfi-java/wolfi-java.yaml \
-            kenzman/mpnt-wolfi-java:local \
-            output.tar
+            kenzman/mpnt-wolfi-java:${{ matrix.arch }} \
+            ${{ matrix.tar }} --arch ${{ matrix.arch }}
 
-      - name: Run Trivy Vulnerability Scanner
+      - name: Scan ${{ matrix.arch }} Tarball
         uses: aquasecurity/trivy-action@master
         with:
-          scan-type: 'image'
-          image-src: 'static'       
-          input: 'output.tar'       
+          input: '${{ matrix.tar }}'
           format: 'table'
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
 
-      - name: Login and Push to Docker Hub
+  # --- JOB 2: Publish and Sign (Only runs if Job 1 succeeds) ---
+  publish-and-sign:
+    needs: scan-architectures
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Final Publish Multi-Arch
         run: |
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-          
-          # Publish properly to registry to get the manifest digest
           docker run --rm \
-            -v "${{ github.workspace }}":/work \
-            -w /work \
-            -e DOCKER_CONFIG=/root/.docker \
-            -v /home/runner/.docker:/root/.docker \
+            -v "${{ github.workspace }}":/work -w /work \
+            -e DOCKER_CONFIG=/root/.docker -v /home/runner/.docker:/root/.docker \
             cgr.dev/chainguard/apko:latest publish \
             images/wolfi-java/wolfi-java.yaml \
-            ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest \
-            --arch x86_64,aarch64
+            ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest
 
-      - name: Extract Version and Create Rolling Tags
+      - name: Extract Version & Tags
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           docker pull ${REPO}:latest
           JAVA_VER=$(docker run --rm ${REPO}:latest java -version 2>&1 | awk -F '"' '/version/ {print $2}')
           MAJOR_VER=$(echo $JAVA_VER | cut -d. -f1)
-          
           echo "JAVA_FULL_VER=$JAVA_VER" >> $GITHUB_ENV
           docker buildx imagetools create -t ${REPO}:${JAVA_VER} ${REPO}:latest
           docker buildx imagetools create -t ${REPO}:${MAJOR_VER} ${REPO}:latest
@@ -91,13 +103,13 @@ jobs:
 
       - name: Generate Build Summary
         run: |
-          echo "### Build Successful 🚀" >> $GITHUB_STEP_SUMMARY
-          echo "Successfully scanned locally, pushed, and signed **NetShield Wolfi-Java**." >> $GITHUB_STEP_SUMMARY
-          echo "- **Digest:** \`${{ env.IMAGE_DIGEST }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Successful " >> $GITHUB_STEP_SUMMARY
+          echo "Successfully scanned **AMD64** and **ARM64** in parallel." >> $GITHUB_STEP_SUMMARY
+          echo "Signed and verified multi-arch manifest: \`${{ env.IMAGE_DIGEST }}\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Notify on Failure
         if: failure()
         run: |
           curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\":\"❌ **Alert**: Build failed for **Wolfi-Java**! \nCheck logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+          --data "{\"text\":\"❌ Alert: Build or Security Scan failed! \nCheck logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
           ${{ secrets.NOTIFICATION_WEBHOOK }}
