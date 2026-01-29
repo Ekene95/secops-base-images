@@ -34,9 +34,11 @@ jobs:
       - name: Run Trivy Vulnerability Scanner
         uses: aquasecurity/trivy-action@master
         with:
-          input: 'output.tar' # Scan the local file
+          scan-type: 'image'
+          image-src: 'static'       
+          input: 'output.tar'       
           format: 'table'
-          exit-code: '1' # Stop the workflow if CRITICAL/HIGH found
+          exit-code: '1'
           severity: 'CRITICAL,HIGH'
 
       - name: Login and Push to Docker Hub
