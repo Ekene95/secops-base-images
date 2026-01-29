@@ -20,17 +20,30 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and Publish with apko
+      - name: Build Locally with apko
         run: |
-          USER="${{ secrets.DOCKERHUB_USERNAME }}"
-          REPO="${USER}/mpnt-wolfi-java"
+          # Build to a local tarball for scanning
+          docker run --rm \
+            -v "${{ github.workspace }}":/work \
+            -w /work \
+            cgr.dev/chainguard/apko:latest build \
+            images/wolfi-java/wolfi-java.yaml \
+            kenzman/mpnt-wolfi-java:local \
+            output.tar
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          input: 'output.tar' # Scan the local file
+          format: 'table'
+          exit-code: '1' # Stop the workflow if CRITICAL/HIGH found
+          severity: 'CRITICAL,HIGH'
+
+      - name: Login and Push to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
           
+          # Publish properly to registry to get the manifest digest
           docker run --rm \
             -v "${{ github.workspace }}":/work \
             -w /work \
@@ -38,86 +51,47 @@ jobs:
             -v /home/runner/.docker:/root/.docker \
             cgr.dev/chainguard/apko:latest publish \
             images/wolfi-java/wolfi-java.yaml \
-            ${REPO}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest \
+            --arch x86_64,aarch64
 
       - name: Extract Version and Create Rolling Tags
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
-          
           docker pull ${REPO}:latest
-          
           JAVA_VER=$(docker run --rm ${REPO}:latest java -version 2>&1 | awk -F '"' '/version/ {print $2}')
           MAJOR_VER=$(echo $JAVA_VER | cut -d. -f1)
           
           echo "JAVA_FULL_VER=$JAVA_VER" >> $GITHUB_ENV
-          
-          # Create rolling version tags
           docker buildx imagetools create -t ${REPO}:${JAVA_VER} ${REPO}:latest
           docker buildx imagetools create -t ${REPO}:${MAJOR_VER} ${REPO}:latest
-
-      - name: Run Trivy Vulnerability Scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:${{ env.JAVA_FULL_VER }}'
-          format: 'table'
-          exit-code: '1'
-          severity: 'CRITICAL,HIGH'
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@main
 
-      - name: Sign and Verify (with Resilience)
+      - name: Sign and Verify (Resilient Loop)
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           TAG="${{ env.JAVA_FULL_VER }}"
-          
-          # 1. Capture the Digest from the Registry (More reliable for Multi-Arch)
-          echo "Extracting digest for ${REPO}:${TAG}..."
           DIGEST=$(docker buildx imagetools inspect ${REPO}:${TAG} --format '{{json .Manifest.Digest}}' | tr -d '"')
-          
-          if [ -z "$DIGEST" ] || [ "$DIGEST" == "null" ]; then
-            echo "❌ Error: Could not find digest for ${REPO}:${TAG}. Ensure the 'Extract Version' step ran correctly."
-            exit 1
-          fi
-          
           echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
           
-          # 2. Sign the Image
-          echo "Signing image: ${REPO}@${DIGEST}"
           cosign sign --yes "${REPO}@${DIGEST}"
 
-          # 3. Robust Verification Retry Loop
-          echo "Verifying signature (waiting for Docker Hub propagation)..."
-          MAX_RETRIES=5
-          WAIT_TIME=15
-          SUCCESS=false
-
-          for i in $(seq 1 $MAX_RETRIES); do
-            # We use the digest here to ensure we are verifying the exact bits we just signed
+          for i in {1..5}; do
             if cosign verify "${REPO}@${DIGEST}" \
               --certificate-identity-regexp "https://github.com/Ekene95/secops-base-images/.*" \
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com"; then
-              echo "✅ Verification successful on attempt $i!"
-              SUCCESS=true
-              break
-            else
-              echo "⚠️ Attempt $i failed. Signature not yet indexed. Retrying in ${WAIT_TIME}s..."
-              sleep $WAIT_TIME
+              exit 0
             fi
+            sleep 15
           done
+          exit 10
 
-          if [ "$SUCCESS" = false ]; then
-            echo "❌ Error: Signature could not be verified after $MAX_RETRIES attempts."
-            exit 10
-          fi
-            
       - name: Generate Build Summary
         run: |
           echo "### Build Successful 🚀" >> $GITHUB_STEP_SUMMARY
-          echo "Successfully built, scanned, and signed **NetShield Wolfi-Java**." >> $GITHUB_STEP_SUMMARY
-          echo "- **Java Version:** ${{ env.JAVA_FULL_VER }}" >> $GITHUB_STEP_SUMMARY
+          echo "Successfully scanned locally, pushed, and signed **NetShield Wolfi-Java**." >> $GITHUB_STEP_SUMMARY
           echo "- **Digest:** \`${{ env.IMAGE_DIGEST }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Registry:** [kenzman/mpnt-wolfi-java](https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java)" >> $GITHUB_STEP_SUMMARY
 
       - name: Notify on Failure
         if: failure()
