@@ -118,3 +118,10 @@ jobs:
           echo "- **Java Version:** ${{ env.JAVA_FULL_VER }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Digest:** \`${{ env.IMAGE_DIGEST }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Registry:** [kenzman/mpnt-wolfi-java](https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"❌ **Alert**: Build failed for **Wolfi-Java**! \nCheck logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+          ${{ secrets.NOTIFICATION_WEBHOOK }}
