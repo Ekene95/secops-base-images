@@ -4,17 +4,24 @@ on:
   push:
     branches: [ master ]
     paths:
-      - 'images/wolfi-python/**' 
+      - 'images/wolfi-python/**'
   schedule:
-    - cron: '0 3 * * *' 
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
   scan-architectures:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: true
       matrix:
         arch: [x86_64, aarch64]
+        include:
+          - arch: x86_64
+            tar: py-amd64.tar
+          - arch: aarch64
+            tar: py-arm64.tar
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -25,12 +32,12 @@ jobs:
             cgr.dev/chainguard/apko:latest build \
             images/wolfi-python/wolfi-python.yaml \
             kenzman/mpnt-wolfi-python:local \
-            ${{ matrix.arch }}.tar --arch ${{ matrix.arch }}
+            ${{ matrix.tar }} --arch ${{ matrix.arch }}
 
       - name: Scan ${{ matrix.arch }} Tarball
         uses: aquasecurity/trivy-action@master
         with:
-          input: '${{ matrix.arch }}.tar'
+          input: '${{ matrix.tar }}'
           format: 'table'
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
@@ -64,20 +71,31 @@ jobs:
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-python"
           docker pull ${REPO}:latest
-          # Python specific version check
           PY_VER=$(docker run --rm ${REPO}:latest python --version | cut -d' ' -f2)
           echo "PY_VER=$PY_VER" >> $GITHUB_ENV
           docker buildx imagetools create -t ${REPO}:${PY_VER} ${REPO}:latest
 
       - name: Install Cosign & Sign
         uses: sigstore/cosign-installer@main
-      
-      - name: Sign and Verify (Resilient Loop)
+
+      - name: Sign and Verify (Audit)
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-python"
-          DIGEST=$(docker buildx imagetools inspect ${REPO}:latest --format '{{json .Manifest.Digest}}' | tr -d '"')
+          TAG="${{ env.PY_VER }}"
+          DIGEST=$(docker buildx imagetools inspect ${REPO}:${TAG} --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
+          
           cosign sign --yes "${REPO}@${DIGEST}"
-          # Verification loop... (same as your Java logic)
+
+          for i in {1..5}; do
+            if cosign verify "${REPO}@${DIGEST}" \
+              --certificate-identity-regexp "https://github.com/Ekene95/secops-base-images/.*" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com"; then
+              exit 0
+            fi
+            sleep 15
+          done
+          exit 10
 
       - name: Notify on Failure
         if: failure()

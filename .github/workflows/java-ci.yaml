@@ -10,11 +10,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  # --- JOB 1: Parallel Security Scanning ---
   scan-architectures:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true # If one arch is vulnerable, stop everything immediately
+      fail-fast: true
       matrix:
         arch: [x86_64, aarch64]
         include:
@@ -43,7 +42,6 @@ jobs:
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
 
-  # --- JOB 2: Publish and Sign (Only runs if Job 1 succeeds) ---
   publish-and-sign:
     needs: scan-architectures
     runs-on: ubuntu-latest
@@ -82,7 +80,7 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@main
 
-      - name: Sign and Verify (Resilient Loop)
+      - name: Sign and Verify (Audit)
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           TAG="${{ env.JAVA_FULL_VER }}"
