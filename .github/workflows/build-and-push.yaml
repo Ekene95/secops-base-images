@@ -29,8 +29,7 @@ jobs:
             cgr.dev/chainguard/apko:latest build \
             images/wolfi-java/wolfi-java.yaml \
             mpnt-wolfi-java:latest \
-            output.tar \
-            --arch x86_64,aarch64
+            output.tar
 
       - name: Load Images into Docker
         run: docker load < output.tar
