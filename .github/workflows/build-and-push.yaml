@@ -36,8 +36,7 @@ jobs:
             -v /home/runner/.docker:/root/.docker \
             cgr.dev/chainguard/apko:latest publish \
             images/wolfi-java/wolfi-java.yaml \
-            ${REPO}:latest \
-            --arch x86_64,aarch64
+            ${REPO}:latest
 
       - name: Extract Version and Create Rolling Tags
         run: |
@@ -70,8 +69,15 @@ jobs:
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           TAG="${{ env.JAVA_FULL_VER }}"
           
-          # 1. Capture the Digest
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${REPO}:${TAG}" | cut -d'@' -f2)
+          # 1. Capture the Digest from the Registry (More reliable for Multi-Arch)
+          echo "Extracting digest for ${REPO}:${TAG}..."
+          DIGEST=$(docker buildx imagetools inspect ${REPO}:${TAG} --format '{{json .Manifest.Digest}}' | tr -d '"')
+          
+          if [ -z "$DIGEST" ] || [ "$DIGEST" == "null" ]; then
+            echo "❌ Error: Could not find digest for ${REPO}:${TAG}. Ensure the 'Extract Version' step ran correctly."
+            exit 1
+          fi
+          
           echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
           
           # 2. Sign the Image
@@ -85,10 +91,11 @@ jobs:
           SUCCESS=false
 
           for i in $(seq 1 $MAX_RETRIES); do
+            # We use the digest here to ensure we are verifying the exact bits we just signed
             if cosign verify "${REPO}@${DIGEST}" \
               --certificate-identity-regexp "https://github.com/Ekene95/secops-base-images/.*" \
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com"; then
-              echo "✅ Verification successful!"
+              echo "✅ Verification successful on attempt $i!"
               SUCCESS=true
               break
             else
