@@ -4,7 +4,7 @@
 ![Build Status](https://img.shields.io/badge/Build-Verified-blue)
 ![Java Version](https://img.shields.io/badge/Java-24-orange)
 ![Provenance](https://img.shields.io/badge/Signed-Cosign-blueviolet)
-![CI Status](https://github.com/Ekene95/secops-base-images/actions/workflows/ci.yaml/badge.svg)
+![CI Status](https://github.com/Ekene95/secops-base-images/actions/workflows/java-ci.yaml/badge.svg)
 
 This repository maintains the **Organization’s Gold Standard** for Java-based container environments. It utilizes the [Wolfi (Chainguard)](https://wolfi.dev/) ecosystem to provide a minimalist, high-performance, and cryptographically signed runtime.
 
