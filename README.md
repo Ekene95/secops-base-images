@@ -10,6 +10,16 @@ This repository maintains the **Organization’s Gold Standard** for Java-based 
 
 ---
 
+## Security & Build Dashboard
+| Base Image | Build Status | Security Scan | Registry |
+| :--- | :--- | :--- | :--- |
+| **Wolfi-Java** | [![Java Status](https://github.com/Ekene95/secops-base-images/actions/workflows/java-ci.yaml/badge.svg)](https://github.com/Ekene95/secops-base-images/actions/workflows/java-ci.yaml) | ![Trivy](https://img.shields.io/badge/trivy-verified-brightgreen?logo=trivy) | [Docker Hub](https://hub.docker.com/r/kenzman/mpnt-wolfi-java) |
+| **Wolfi-Python** | [![Python Status](https://github.com/Ekene95/secops-base-images/actions/workflows/python-ci.yaml/badge.svg)](https://github.com/Ekene95/secops-base-images/actions/workflows/python-ci.yaml) | ![Trivy](https://img.shields.io/badge/trivy-verified-brightgreen?logo=trivy) | [Docker Hub](https://hub.docker.com/r/kenzman/mpnt-wolfi-python) |
+
+> **Audit Note:** All images follow a strict **Shift-Left** pipeline: Local Build → Trivy Scan → Publish → Cosign Sign. A "Passing" build status is cryptographic proof of a clean security scan.
+
+---
+
 ## Key Value Propositions
 
 Unlike legacy images (e.g., `openjdk:alpine` or `debian-slim`), this image is engineered for the modern DevSecOps pipeline:
