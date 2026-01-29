@@ -18,6 +18,9 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build Multi-Arch with apko
         run: |
           docker run --rm \
@@ -26,10 +29,25 @@ jobs:
             cgr.dev/chainguard/apko:latest build \
             images/wolfi-java/wolfi-java.yaml \
             mpnt-wolfi-java:latest \
-            output.tar
+            output.tar \
+            --arch x86_64,aarch64
 
       - name: Load Images into Docker
         run: docker load < output.tar
+
+      - name: Scan x86_64 Image (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'mpnt-wolfi-java:latest-amd64'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+      - name: Scan ARM64 Image (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'mpnt-wolfi-java:latest-arm64'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -39,64 +57,67 @@ jobs:
 
       - name: Dynamic Tagging and Push
         run: |
-          # 1. Detect Java version
+          # Detect Java version
           JAVA_VER=$(docker run --rm mpnt-wolfi-java:latest-amd64 java -version 2>&1 | awk -F '"' '/version/ {print $2}')
           MAJOR_VER=$(echo $JAVA_VER | cut -d. -f1)
           
           echo "JAVA_FULL_VER=$JAVA_VER" >> $GITHUB_ENV
           echo "JAVA_MAJOR_VER=$MAJOR_VER" >> $GITHUB_ENV
           
-          # Use the EXACT repo path
           USER="${{ secrets.DOCKERHUB_USERNAME }}"
           REPO="${USER}/mpnt-wolfi-java"
 
-          # 2. Push architecture-specific tags
+          # Push helper tags
           for ARCH in amd64 arm64; do
             docker tag mpnt-wolfi-java:latest-${ARCH} ${REPO}:${JAVA_VER}-${ARCH}
             docker push ${REPO}:${JAVA_VER}-${ARCH}
           done
 
-      - name: Create and Push Multi-Arch Manifests
+      - name: Create Multi-Arch Manifest (Buildx Imagetools)
         run: |
           USER="${{ secrets.DOCKERHUB_USERNAME }}"
           REPO="${USER}/mpnt-wolfi-java"
           VER=$JAVA_FULL_VER
           MAJOR=$JAVA_MAJOR_VER
-          
-          # 3. Create manifest using the FULL tag paths
-          # The --amend flag is critical to prevent "already exists" errors
-          for TAG in $VER $MAJOR latest; do
-            docker manifest create ${REPO}:${TAG} \
-              --amend ${REPO}:${VER}-amd64 \
-              --amend ${REPO}:${VER}-arm64
-            docker manifest push ${REPO}:${TAG}
-          done
 
-      - name: Clean Up Tags from Docker Hub
+          # Create the multi-arch manifest using Imagetools
+          # This command creates the index and pushes it in one step
+          docker buildx imagetools create -t ${REPO}:${VER} \
+            ${REPO}:${VER}-amd64 \
+            ${REPO}:${VER}-arm64
+
+          docker buildx imagetools create -t ${REPO}:${MAJOR} \
+            ${REPO}:${VER}-amd64 \
+            ${REPO}:${VER}-arm64
+
+          docker buildx imagetools create -t ${REPO}:latest \
+            ${REPO}:${VER}-amd64 \
+            ${REPO}:${VER}-arm64
+
+      - name: Clean Up Clutter Tags
         if: always()
         run: |
-          # 4. Use the new Full Access token to get a JWT
+          # Obtain JWT token
           TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
             -d '{"username": "'${{ secrets.DOCKERHUB_USERNAME }}'", "password": "'${{ secrets.DOCKERHUB_TOKEN }}'"}' \
             https://hub.docker.com/v2/users/login/ | jq -r .token)
           
           REPO_PATH="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           
-          # 5. API-based deletion
-          for ARCH_TAG in "${JAVA_FULL_VER}-amd64" "${JAVA_FULL_VER}-arm64"; do
-            echo "Deleting tag: $ARCH_TAG"
-            curl -s -X DELETE \
-              -H "Authorization: JWT ${TOKEN}" \
-              "https://hub.docker.com/v2/repositories/${REPO_PATH}/tags/${ARCH_TAG}/"
+          # Delete helper tags using the new Full Access PAT
+          for TAG in "${JAVA_FULL_VER}-amd64" "${JAVA_FULL_VER}-arm64"; do
+            echo "Deleting tag: $TAG"
+            curl -s -X DELETE -H "Authorization: JWT ${TOKEN}" \
+              "https://hub.docker.com/v2/repositories/${REPO_PATH}/tags/${TAG}/"
           done
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@main
 
-      - name: Sign and Verify (The Security Seal)
+      - name: Sign and Verify Final Image
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
-          cosign sign --yes ${REPO}:${JAVA_FULL_VER}
-          cosign verify ${REPO}:${JAVA_FULL_VER} \
+          cosign sign --yes ${REPO}:${{ env.JAVA_FULL_VER }}
+          cosign verify ${REPO}:${{ env.JAVA_FULL_VER }} \
             --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
