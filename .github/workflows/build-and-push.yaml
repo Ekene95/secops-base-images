@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write 
-    
+      id-token: write # Mandatory for Cosign keyless signing
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -25,13 +25,11 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and Publish with apko
-        id: apko_publish
         run: |
-          # Use 'publish' instead of 'build' to push directly to Docker Hub
-          # This automatically creates the multi-arch manifest
           USER="${{ secrets.DOCKERHUB_USERNAME }}"
           REPO="${USER}/mpnt-wolfi-java"
           
+          # Publish directly to the registry to create the multi-arch manifest
           docker run --rm \
             -v "${{ github.workspace }}":/work \
             -w /work \
@@ -43,23 +41,43 @@ jobs:
 
       - name: Dynamic Tagging for Versioning
         run: |
-          # Now that 'latest' is pushed, we pull once to get the version
+          # Pull the newly created manifest to verify and extract version
           docker pull ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest
           
           JAVA_VER=$(docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest java -version 2>&1 | awk -F '"' '/version/ {print $2}')
           MAJOR_VER=$(echo $JAVA_VER | cut -d. -f1)
           
-          USER="${{ secrets.DOCKERHUB_USERNAME }}"
-          REPO="${USER}/mpnt-wolfi-java"
+          echo "JAVA_FULL_VER=$JAVA_VER" >> $GITHUB_ENV
+          echo "JAVA_MAJOR_VER=$MAJOR_VER" >> $GITHUB_ENV
           
-          # Use buildx to point the version tags to the already-existing manifest
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
+          
+          # Create rolling version tags from the existing manifest
           docker buildx imagetools create -t ${REPO}:${JAVA_VER} ${REPO}:latest
           docker buildx imagetools create -t ${REPO}:${MAJOR_VER} ${REPO}:latest
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:${{ env.JAVA_FULL_VER }}'
+          format: 'table'
+          exit-code: '1' # Fails build if vulnerabilities are found
+          severity: 'CRITICAL,HIGH'
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@main
 
-      - name: Sign the Image
+      - name: Sign the Image Manifest
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
+          # Sign the specific version manifest keylessly
+          cosign sign --yes ${REPO}:${{ env.JAVA_FULL_VER }}
+          # Also sign 'latest' to ensure rolling tag integrity
           cosign sign --yes ${REPO}:latest
+
+      - name: Verify Signature (Audit Step)
+        run: |
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
+          cosign verify ${REPO}:${{ env.JAVA_FULL_VER }} \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
