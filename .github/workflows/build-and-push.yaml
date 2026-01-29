@@ -43,7 +43,6 @@ jobs:
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           
-          # Pull the latest manifest to extract version
           docker pull ${REPO}:latest
           
           JAVA_VER=$(docker run --rm ${REPO}:latest java -version 2>&1 | awk -F '"' '/version/ {print $2}')
@@ -70,17 +69,24 @@ jobs:
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           
-          # 1. Capture the immutable digest of the pushed image
-          # This ensures we sign the content, not a mutable tag
-          DIGEST=$(docker buildx imagetools inspect ${REPO}:${{ env.JAVA_FULL_VER }} --format '{{json .containerimage.digest}}' | tr -d '"')
+          # 1. More robust way to capture the Manifest List digest using jq
+          # This specifically grabs the top-level OCI Index/Manifest List digest
+          DIGEST=$(docker buildx imagetools inspect ${REPO}:${{ env.JAVA_FULL_VER }} --format '{{json .}}' | jq -r '.manifest.digest // .digest')
+          
+          if [ -z "$DIGEST" ] || [ "$DIGEST" == "null" ]; then
+            echo "Error: Could not extract image digest."
+            exit 1
+          fi
+          
           echo "Final Image Digest: $DIGEST"
+          echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
           
           # 2. Sign the image using the digest
           cosign sign --yes "${REPO}@${DIGEST}"
 
-          # 3. Handle the race condition: Wait for propagation
-          echo "Waiting 15 seconds for Docker Hub propagation..."
-          sleep 15
+          # 3. Handle the race condition
+          echo "Waiting 20 seconds for Docker Hub propagation..."
+          sleep 20
 
           # 4. Verify using the same digest
           cosign verify "${REPO}@${DIGEST}" \
@@ -92,4 +98,5 @@ jobs:
           echo "### Build Successful 🚀" >> $GITHUB_STEP_SUMMARY
           echo "Successfully built, scanned, and signed **NetShield Wolfi-Java**." >> $GITHUB_STEP_SUMMARY
           echo "- **Java Version:** ${{ env.JAVA_FULL_VER }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Registry:** docker.io/${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java" >> $GITHUB_STEP_SUMMARY
+          echo "- **Digest:** \`${{ env.IMAGE_DIGEST }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry:** [kenzman/mpnt-wolfi-java](https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java)" >> $GITHUB_STEP_SUMMARY
