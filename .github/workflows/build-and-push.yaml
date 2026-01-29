@@ -39,18 +39,18 @@ jobs:
 
       - name: Dynamic Tagging and Push
         run: |
-          # 1. Detect Java version (e.g., 24.0.2)
+          # 1. Detect Java version
           JAVA_VER=$(docker run --rm mpnt-wolfi-java:latest-amd64 java -version 2>&1 | awk -F '"' '/version/ {print $2}')
           MAJOR_VER=$(echo $JAVA_VER | cut -d. -f1)
           
-          echo "Detected Java: $JAVA_VER"
           echo "JAVA_FULL_VER=$JAVA_VER" >> $GITHUB_ENV
           echo "JAVA_MAJOR_VER=$MAJOR_VER" >> $GITHUB_ENV
           
+          # Use the EXACT repo path
           USER="${{ secrets.DOCKERHUB_USERNAME }}"
           REPO="${USER}/mpnt-wolfi-java"
 
-          # 2. Push arch tags (Required for Docker Hub to accept the manifest)
+          # 2. Push architecture-specific tags
           for ARCH in amd64 arm64; do
             docker tag mpnt-wolfi-java:latest-${ARCH} ${REPO}:${JAVA_VER}-${ARCH}
             docker push ${REPO}:${JAVA_VER}-${ARCH}
@@ -63,7 +63,8 @@ jobs:
           VER=$JAVA_FULL_VER
           MAJOR=$JAVA_MAJOR_VER
           
-          # 3. Create manifest using the tags we just pushed
+          # 3. Create manifest using the FULL tag paths
+          # The --amend flag is critical to prevent "already exists" errors
           for TAG in $VER $MAJOR latest; do
             docker manifest create ${REPO}:${TAG} \
               --amend ${REPO}:${VER}-amd64 \
@@ -74,14 +75,14 @@ jobs:
       - name: Clean Up Tags from Docker Hub
         if: always()
         run: |
-          # 4. Get JWT using your new Full Access Token
+          # 4. Use the new Full Access token to get a JWT
           TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
             -d '{"username": "'${{ secrets.DOCKERHUB_USERNAME }}'", "password": "'${{ secrets.DOCKERHUB_TOKEN }}'"}' \
             https://hub.docker.com/v2/users/login/ | jq -r .token)
           
           REPO_PATH="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           
-          # 5. Delete the temporary architecture tags
+          # 5. API-based deletion
           for ARCH_TAG in "${JAVA_FULL_VER}-amd64" "${JAVA_FULL_VER}-arm64"; do
             echo "Deleting tag: $ARCH_TAG"
             curl -s -X DELETE \
