@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # Mandatory for Cosign keyless signing
+      id-token: write 
 
     steps:
       - name: Checkout Code
@@ -29,7 +29,6 @@ jobs:
           USER="${{ secrets.DOCKERHUB_USERNAME }}"
           REPO="${USER}/mpnt-wolfi-java"
           
-          # Publish directly to the registry to create the multi-arch manifest
           docker run --rm \
             -v "${{ github.workspace }}":/work \
             -w /work \
@@ -37,22 +36,22 @@ jobs:
             -v /home/runner/.docker:/root/.docker \
             cgr.dev/chainguard/apko:latest publish \
             images/wolfi-java/wolfi-java.yaml \
-            ${REPO}:latest
+            ${REPO}:latest \
+            --arch x86_64,aarch64
 
-      - name: Dynamic Tagging for Versioning
+      - name: Extract Version and Create Rolling Tags
         run: |
-          # Pull the newly created manifest to verify and extract version
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           
-          JAVA_VER=$(docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest java -version 2>&1 | awk -F '"' '/version/ {print $2}')
+          # Pull the latest manifest to extract version
+          docker pull ${REPO}:latest
+          
+          JAVA_VER=$(docker run --rm ${REPO}:latest java -version 2>&1 | awk -F '"' '/version/ {print $2}')
           MAJOR_VER=$(echo $JAVA_VER | cut -d. -f1)
           
           echo "JAVA_FULL_VER=$JAVA_VER" >> $GITHUB_ENV
-          echo "JAVA_MAJOR_VER=$MAJOR_VER" >> $GITHUB_ENV
           
-          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
-          
-          # Create rolling version tags from the existing manifest
+          # Create rolling version tags
           docker buildx imagetools create -t ${REPO}:${JAVA_VER} ${REPO}:latest
           docker buildx imagetools create -t ${REPO}:${MAJOR_VER} ${REPO}:latest
 
@@ -61,23 +60,36 @@ jobs:
         with:
           image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:${{ env.JAVA_FULL_VER }}'
           format: 'table'
-          exit-code: '1' # Fails build if vulnerabilities are found
+          exit-code: '1'
           severity: 'CRITICAL,HIGH'
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@main
 
-      - name: Sign the Image Manifest
+      - name: Sign and Verify by Digest
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
-          # Sign the specific version manifest keylessly
-          cosign sign --yes ${REPO}:${{ env.JAVA_FULL_VER }}
-          # Also sign 'latest' to ensure rolling tag integrity
-          cosign sign --yes ${REPO}:latest
+          
+          # 1. Capture the immutable digest of the pushed image
+          # This ensures we sign the content, not a mutable tag
+          DIGEST=$(docker buildx imagetools inspect ${REPO}:${{ env.JAVA_FULL_VER }} --format '{{json .containerimage.digest}}' | tr -d '"')
+          echo "Final Image Digest: $DIGEST"
+          
+          # 2. Sign the image using the digest
+          cosign sign --yes "${REPO}@${DIGEST}"
 
-      - name: Verify Signature (Audit Step)
-        run: |
-          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
-          cosign verify ${REPO}:${{ env.JAVA_FULL_VER }} \
+          # 3. Handle the race condition: Wait for propagation
+          echo "Waiting 15 seconds for Docker Hub propagation..."
+          sleep 15
+
+          # 4. Verify using the same digest
+          cosign verify "${REPO}@${DIGEST}" \
             --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+            
+      - name: Generate Build Summary
+        run: |
+          echo "### Build Successful 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "Successfully built, scanned, and signed **NetShield Wolfi-Java**." >> $GITHUB_STEP_SUMMARY
+          echo "- **Java Version:** ${{ env.JAVA_FULL_VER }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry:** docker.io/${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java" >> $GITHUB_STEP_SUMMARY
