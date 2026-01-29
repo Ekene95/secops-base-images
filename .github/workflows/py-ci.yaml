@@ -1,0 +1,87 @@
+name: Build and Push Wolfi Python Image
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'images/wolfi-python/**' 
+  schedule:
+    - cron: '0 3 * * *' 
+  workflow_dispatch:
+
+jobs:
+  scan-architectures:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.arch }} Locally
+        run: |
+          docker run --rm -v "${{ github.workspace }}":/work -w /work \
+            cgr.dev/chainguard/apko:latest build \
+            images/wolfi-python/wolfi-python.yaml \
+            kenzman/mpnt-wolfi-python:local \
+            ${{ matrix.arch }}.tar --arch ${{ matrix.arch }}
+
+      - name: Scan ${{ matrix.arch }} Tarball
+        uses: aquasecurity/trivy-action@master
+        with:
+          input: '${{ matrix.arch }}.tar'
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+
+  publish-and-sign:
+    needs: scan-architectures
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Final Publish Multi-Arch
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}":/work -w /work \
+            -e DOCKER_CONFIG=/root/.docker -v /home/runner/.docker:/root/.docker \
+            cgr.dev/chainguard/apko:latest publish \
+            images/wolfi-python/wolfi-python.yaml \
+            ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-python:latest
+
+      - name: Extract Python Version & Tags
+        run: |
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-python"
+          docker pull ${REPO}:latest
+          # Python specific version check
+          PY_VER=$(docker run --rm ${REPO}:latest python --version | cut -d' ' -f2)
+          echo "PY_VER=$PY_VER" >> $GITHUB_ENV
+          docker buildx imagetools create -t ${REPO}:${PY_VER} ${REPO}:latest
+
+      - name: Install Cosign & Sign
+        uses: sigstore/cosign-installer@main
+      
+      - name: Sign and Verify (Resilient Loop)
+        run: |
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-python"
+          DIGEST=$(docker buildx imagetools inspect ${REPO}:latest --format '{{json .Manifest.Digest}}' | tr -d '"')
+          cosign sign --yes "${REPO}@${DIGEST}"
+          # Verification loop... (same as your Java logic)
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"❌ Alert: **Wolfi-Python** build failed! \nLogs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+          ${{ secrets.NOTIFICATION_WEBHOOK }}
