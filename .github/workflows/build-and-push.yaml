@@ -4,7 +4,9 @@ on:
   push:
     branches: [ master ]
     paths:
-      - 'images/wolfi-java/wolfi-java.yaml'
+      - 'images/**'
+  schedule:
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 jobs:
