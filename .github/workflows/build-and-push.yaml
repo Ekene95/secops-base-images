@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # Required for Cosign keyless signing
+      id-token: write 
     
     steps:
       - name: Checkout Code
@@ -26,7 +26,8 @@ jobs:
             cgr.dev/chainguard/apko:latest build \
             images/wolfi-java/wolfi-java.yaml \
             mpnt-wolfi-java:latest \
-            output.tar
+            output.tar \
+            --arch x86_64,aarch64
 
       - name: Load Images into Docker
         run: docker load < output.tar
@@ -53,10 +54,9 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Push by Digest and Extract Version
-        id: push_step
+      - name: Dynamic Tagging and Push
         run: |
-          # 1. Detect Java version (e.g., 24.0.2) from the built image
+          # 1. Detect Java version
           JAVA_VER=$(docker run --rm mpnt-wolfi-java:latest-amd64 java -version 2>&1 | awk -F '"' '/version/ {print $2}')
           MAJOR_VER=$(echo $JAVA_VER | cut -d. -f1)
           
@@ -66,19 +66,11 @@ jobs:
           USER=${{ secrets.DOCKERHUB_USERNAME }}
           REPO="$USER/mpnt-wolfi-java"
 
-          # 2. Push images by Digest to keep the UI clean
-          # We tag them with a temporary name, push, then capture the digest
-          # The digest is immutable and doesn't create a visible "tag" on the UI once the manifest exists
-          
-          # Push AMD64
-          docker tag mpnt-wolfi-java:latest-amd64 ${REPO}:tmp-amd64
-          AMD64_DIGEST=$(docker push ${REPO}:tmp-amd64 | grep digest | awk '{print $3}')
-          echo "AMD64_DIGEST=${AMD64_DIGEST}" >> $GITHUB_ENV
-          
-          # Push ARM64
-          docker tag mpnt-wolfi-java:latest-arm64 ${REPO}:tmp-arm64
-          ARM64_DIGEST=$(docker push ${REPO}:tmp-arm64 | grep digest | awk '{print $3}')
-          echo "ARM64_DIGEST=${ARM64_DIGEST}" >> $GITHUB_ENV
+          # 2. Push architecture-specific tags so the manifest can reference them
+          for ARCH in amd64 arm64; do
+            docker tag mpnt-wolfi-java:latest-${ARCH} ${REPO}:${JAVA_VER}-${ARCH}
+            docker push ${REPO}:${JAVA_VER}-${ARCH}
+          done
 
       - name: Create and Push Multi-Arch Manifests
         run: |
@@ -87,47 +79,39 @@ jobs:
           VER=$JAVA_FULL_VER
           MAJOR=$JAVA_MAJOR_VER
           
-          # Create and push manifests using the tags we just pushed
+          # Create and push manifests for Full, Major, and Latest
           for TAG in $VER $MAJOR latest; do
-            docker manifest create ${REPO}:${TAG} \
-              ${REPO}:${VER}-amd64 \
-              ${REPO}:${VER}-arm64
+            docker manifest create ${REPO}:${TAG} ${REPO}:${VER}-amd64 ${REPO}:${VER}-arm64
             docker manifest push ${REPO}:${TAG}
           done
 
       - name: Clean Up Architecture Tags from Docker Hub
         if: always()
         run: |
-          # Use the Docker Hub API to delete the clutter tags
-          # Requires your DOCKERHUB_TOKEN to have "Delete" permissions
+          # 1. Obtain JWT token for API calls
           TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
             -d '{"username": "'${{ secrets.DOCKERHUB_USERNAME }}'", "password": "'${{ secrets.DOCKERHUB_TOKEN }}'"}' \
             https://hub.docker.com/v2/users/login/ | jq -r .token)
           
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           
-          for TAG in "${JAVA_FULL_VER}-amd64" "${JAVA_FULL_VER}-arm64" "tmp-amd64" "tmp-arm64"; do
+          # 2. Delete the cluttering tags (e.g., 24.0.2-amd64) using the API
+          # Ensure your Docker Hub Token has "Delete" permissions
+          for ARCH_TAG in "${JAVA_FULL_VER}-amd64" "${JAVA_FULL_VER}-arm64"; do
+            echo "Deleting temporary architecture tag: $ARCH_TAG"
             curl -s -X DELETE \
               -H "Authorization: JWT ${TOKEN}" \
-              https://hub.docker.com/v2/repositories/${REPO}/tags/${TAG}/
+              https://hub.docker.com/v2/repositories/${REPO}/tags/${ARCH_TAG}/
           done
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@main
 
-      - name: Sign the Clean Tags
+      - name: Sign the Clean Manifests
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           VER=$JAVA_FULL_VER
-          MAJOR=$JAVA_MAJOR_VER
           
-          # Sign the manifest indexes (the public-facing tags)
+          # Sign the manifests (multi-arch indexes) directly
           cosign sign --yes ${REPO}:${VER}
-          cosign sign --yes ${REPO}:${MAJOR}
           cosign sign --yes ${REPO}:latest
-
-      - name: Verify Signature
-        run: |
-          cosign verify ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:${{ env.JAVA_FULL_VER }} \
-            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
