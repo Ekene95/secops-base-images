@@ -5,8 +5,8 @@ on:
     branches: [ master ]
     paths:
       - 'images/wolfi-python/**'
-  schedule:
-    - cron: '0 3 * * *'
+#  schedule:
+#    - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
@@ -47,6 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write
       id-token: write
     steps:
       - name: Checkout Code
