@@ -5,8 +5,8 @@ on:
     branches: [ master ]
     paths:
       - 'images/wolfi-python/**'
-#  schedule:
-#    - cron: '0 3 * * *'
+  schedule:
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
@@ -88,9 +88,11 @@ jobs:
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-python"
           docker pull ${REPO}:latest
-          PY_VER=$(docker run --rm ${REPO}:latest python --version | cut -d' ' -f2)
-          echo "PY_VER=$PY_VER" >> $GITHUB_ENV
-          docker buildx imagetools create -t ${REPO}:${PY_VER} ${REPO}:latest
+          PY_FULL_VER=$(docker run --rm ${REPO}:latest python --version | cut -d' ' -f2)
+          PY_MAJOR_VER=$(echo $PY_FULL_VER | cut -d. -f1-2)
+          echo "PY_VER=$PY_FULL_VER" >> $GITHUB_ENV
+          docker buildx imagetools create -t ${REPO}:${PY_FULL_VER} ${REPO}:latest
+          docker buildx imagetools create -t ${REPO}:${PY_MAJOR_VER} ${REPO}:latest
 
       - name: Install Cosign & Sign
         uses: sigstore/cosign-installer@main
