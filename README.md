@@ -1,12 +1,14 @@
-# SecOps Base Images: Wolfi-Java
+# SecOps Base Images
 
 ![Security Status](https://img.shields.io/badge/Security-0--CVE-brightgreen)
 ![Build Status](https://img.shields.io/badge/Build-Verified-blue)
 ![Java Version](https://img.shields.io/badge/Java-24-orange)
+![Go Version](https://img.shields.io/badge/Go-1.24-00ADD8)
+![Python Version](https://img.shields.io/badge/Python-3.13-3776AB)
 ![Provenance](https://img.shields.io/badge/Signed-Cosign-blueviolet)
-![CI Status](https://github.com/Ekene95/secops-base-images/actions/workflows/java-ci.yaml/badge.svg)
+![SBOM](https://img.shields.io/badge/SBOM-SPDX-blue)
 
-This repository maintains the **Organization’s Gold Standard** for Java-based container environments. It utilizes the [Wolfi (Chainguard)](https://wolfi.dev/) ecosystem to provide a minimalist, high-performance, and cryptographically signed runtime.
+This repository maintains the **Organization’s Gold Standard** for container environments. It utilizes the [Wolfi (Chainguard)](https://wolfi.dev/) ecosystem to provide minimalist, high-performance, and cryptographically signed runtimes for Java, Python, and Go.
 
 ---
 
@@ -14,9 +16,10 @@ This repository maintains the **Organization’s Gold Standard** for Java-based 
 | Base Image | Build Status | Security Scan | Registry |
 | :--- | :--- | :--- | :--- |
 | **Wolfi-Java** | [![Java Status](https://github.com/Ekene95/secops-base-images/actions/workflows/java-ci.yaml/badge.svg)](https://github.com/Ekene95/secops-base-images/actions/workflows/java-ci.yaml) | ![Trivy](https://img.shields.io/badge/trivy-verified-brightgreen?logo=trivy) | [Docker Hub](https://hub.docker.com/r/kenzman/mpnt-wolfi-java) |
-| **Wolfi-Python** | [![Python Status](https://github.com/Ekene95/secops-base-images/actions/workflows/python-ci.yaml/badge.svg)](https://github.com/Ekene95/secops-base-images/actions/workflows/python-ci.yaml) | ![Trivy](https://img.shields.io/badge/trivy-verified-brightgreen?logo=trivy) | [Docker Hub](https://hub.docker.com/r/kenzman/mpnt-wolfi-python) |
+| **Wolfi-Python** | [![Python Status](https://github.com/Ekene95/secops-base-images/actions/workflows/py-ci.yaml/badge.svg)](https://github.com/Ekene95/secops-base-images/actions/workflows/py-ci.yaml) | ![Trivy](https://img.shields.io/badge/trivy-verified-brightgreen?logo=trivy) | [Docker Hub](https://hub.docker.com/r/kenzman/ns-wolfi-python) |
+| **Wolfi-Go** | [![Go Status](https://github.com/Ekene95/secops-base-images/actions/workflows/go-ci.yaml/badge.svg)](https://github.com/Ekene95/secops-base-images/actions/workflows/go-ci.yaml) | ![Trivy](https://img.shields.io/badge/trivy-verified-brightgreen?logo=trivy) | [Docker Hub](https://hub.docker.com/r/kenzman/ns-wolfi-go) |
 
-> **Audit Note:** All images follow a strict **Shift-Left** pipeline: Local Build → Trivy Scan → Publish → Cosign Sign. A "Passing" build status is cryptographic proof of a clean security scan.
+> **Audit Note:** All images follow a strict **Shift-Left** pipeline: Local Build → Trivy Scan → Publish → Cosign Sign → **SBOM Generation**. A "Passing" build status is cryptographic proof of a clean security scan. SBOM artifacts (SPDX format) are attached to every build.
 
 ---
 

@@ -1,5 +1,14 @@
 #!/bin/bash
-IMAGE="mpnt-wolfi-java:24.0.1-amd64"
+# Usage: ./smoke-test.sh <image-name>
+# Example: ./smoke-test.sh kenzman/mpnt-wolfi-java:latest
+
+if [ -z "$1" ]; then
+    echo "Usage: $0 <image-name>"
+    echo "Example: $0 kenzman/mpnt-wolfi-java:latest"
+    exit 1
+fi
+
+IMAGE="$1"
 
 echo "🧪 Starting Smoke Test for $IMAGE..."
 echo "----------------------------------------"

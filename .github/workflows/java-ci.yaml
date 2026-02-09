@@ -32,7 +32,8 @@ jobs:
             cgr.dev/chainguard/apko:latest build \
             images/wolfi-java/wolfi-java.yaml \
             kenzman/mpnt-wolfi-java:${{ matrix.arch }} \
-            ${{ matrix.tar }} --arch ${{ matrix.arch }}
+            ${{ matrix.tar }} --arch ${{ matrix.arch }} \
+            --sbom-path ${{ matrix.arch }}-sbom.spdx.json
 
       - name: Scan ${{ matrix.arch }} Tarball
         uses: aquasecurity/trivy-action@master
@@ -41,6 +42,12 @@ jobs:
           format: 'table'
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
+
+      - name: Upload SBOM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-sbom-${{ matrix.arch }}
+          path: ${{ matrix.arch }}-sbom.spdx.json
 
   publish-and-sign:
     needs: scan-architectures
@@ -66,7 +73,14 @@ jobs:
             -e DOCKER_CONFIG=/root/.docker -v /home/runner/.docker:/root/.docker \
             cgr.dev/chainguard/apko:latest publish \
             images/wolfi-java/wolfi-java.yaml \
-            ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest \
+            --sbom-path java-final-sbom.spdx.json
+
+      - name: Upload Final SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-sbom-final
+          path: java-final-sbom.spdx.json
 
       - name: Extract Version & Tags
         run: |
@@ -99,6 +113,12 @@ jobs:
             sleep 15
           done
           exit 10
+
+      - name: Attach SBOM to Image
+        run: |
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
+          DIGEST="${{ env.IMAGE_DIGEST }}"
+          cosign attach sbom --sbom java-final-sbom.spdx.json "${REPO}@${DIGEST}"
 
       - name: Generate Build Summary
         run: |

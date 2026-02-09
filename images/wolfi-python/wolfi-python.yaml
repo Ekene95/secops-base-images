@@ -5,7 +5,8 @@ contents:
     - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
   packages:
     - wolfi-base
-    - openjdk-24
+    - python-3.13
+    - py3-pip
     - ca-certificates-bundle
 
 accounts:
@@ -19,10 +20,10 @@ accounts:
   run-as: appuser
 
 environment:
-  JAVA_HOME: /usr/lib/jvm/java-24-openjdk
-  PATH: /usr/lib/jvm/java-24-openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUNBUFFERED: "1"
+  PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 archs:
   - x86_64
   - aarch64
-

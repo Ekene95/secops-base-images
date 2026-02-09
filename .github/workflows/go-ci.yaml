@@ -1,12 +1,12 @@
-name: Build and Push Wolfi Python Image
+name: Build and Push Wolfi Go Image
 
 on:
   push:
     branches: [ master ]
     paths:
-      - 'images/wolfi-python/**'
-#  schedule:
-#    - cron: '0 3 * * *'
+      - 'images/wolfi-go/**'
+  schedule:
+    - cron: '0 4 * * *'
   workflow_dispatch:
 
 jobs:
@@ -18,9 +18,9 @@ jobs:
         arch: [x86_64, aarch64]
         include:
           - arch: x86_64
-            tar: py-amd64.tar
+            tar: go-amd64.tar
           - arch: aarch64
-            tar: py-arm64.tar
+            tar: go-arm64.tar
     
     steps:
       - name: Checkout Code
@@ -30,10 +30,10 @@ jobs:
         run: |
           docker run --rm -v "${{ github.workspace }}":/work -w /work \
             cgr.dev/chainguard/apko:latest build \
-            images/wolfi-python/wolfi-python.yaml \
-            kenzman/ns-wolfi-python:local \
+            images/wolfi-go/wolfi-go.yaml \
+            ${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-go:local \
             ${{ matrix.tar }} --arch ${{ matrix.arch }} \
-            --sbom-path py-${{ matrix.arch }}-sbom.spdx.json
+            --sbom-path ${{ matrix.arch }}-sbom.spdx.json
 
       - name: Scan ${{ matrix.arch }} Tarball
         uses: aquasecurity/trivy-action@master
@@ -46,8 +46,8 @@ jobs:
       - name: Upload SBOM Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: python-sbom-${{ matrix.arch }}
-          path: py-${{ matrix.arch }}-sbom.spdx.json
+          name: sbom-${{ matrix.arch }}
+          path: ${{ matrix.arch }}-sbom.spdx.json
 
   publish-and-sign:
     needs: scan-architectures
@@ -72,31 +72,33 @@ jobs:
             -v "${{ github.workspace }}":/work -w /work \
             -e DOCKER_CONFIG=/root/.docker -v /home/runner/.docker:/root/.docker \
             cgr.dev/chainguard/apko:latest publish \
-            images/wolfi-python/wolfi-python.yaml \
-            ${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-python:latest \
-            --sbom-path python-final-sbom.spdx.json
+            images/wolfi-go/wolfi-go.yaml \
+            ${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-go:latest \
+            --sbom-path final-sbom.spdx.json
 
       - name: Upload Final SBOM
         uses: actions/upload-artifact@v4
         with:
-          name: python-sbom-final
-          path: python-final-sbom.spdx.json
+          name: sbom-final
+          path: final-sbom.spdx.json
 
-      - name: Extract Python Version & Tags
+      - name: Extract Go Version & Tags
         run: |
-          REPO="${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-python"
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-go"
           docker pull ${REPO}:latest
-          PY_VER=$(docker run --rm ${REPO}:latest python --version | cut -d' ' -f2)
-          echo "PY_VER=$PY_VER" >> $GITHUB_ENV
-          docker buildx imagetools create -t ${REPO}:${PY_VER} ${REPO}:latest
+          GO_VER=$(docker run --rm ${REPO}:latest go version | awk '{print $3}' | sed 's/go//')
+          MAJOR_VER=$(echo $GO_VER | cut -d. -f1-2)
+          echo "GO_FULL_VER=$GO_VER" >> $GITHUB_ENV
+          docker buildx imagetools create -t ${REPO}:${GO_VER} ${REPO}:latest
+          docker buildx imagetools create -t ${REPO}:${MAJOR_VER} ${REPO}:latest
 
-      - name: Install Cosign & Sign
+      - name: Install Cosign
         uses: sigstore/cosign-installer@main
 
       - name: Sign and Verify (Audit)
         run: |
-          REPO="${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-python"
-          TAG="${{ env.PY_VER }}"
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-go"
+          TAG="${{ env.GO_FULL_VER }}"
           DIGEST=$(docker buildx imagetools inspect ${REPO}:${TAG} --format '{{json .Manifest.Digest}}' | tr -d '"')
           echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
           
@@ -114,13 +116,20 @@ jobs:
 
       - name: Attach SBOM to Image
         run: |
-          REPO="${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-python"
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-go"
           DIGEST="${{ env.IMAGE_DIGEST }}"
-          cosign attach sbom --sbom python-final-sbom.spdx.json "${REPO}@${DIGEST}"
+          cosign attach sbom --sbom final-sbom.spdx.json "${REPO}@${DIGEST}"
+
+      - name: Generate Build Summary
+        run: |
+          echo "### Build Successful " >> $GITHUB_STEP_SUMMARY
+          echo "Successfully scanned **AMD64** and **ARM64** in parallel." >> $GITHUB_STEP_SUMMARY
+          echo "Signed and verified multi-arch manifest: \`${{ env.IMAGE_DIGEST }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "SBOM generated and attached as artifact." >> $GITHUB_STEP_SUMMARY
 
       - name: Notify on Failure
         if: failure()
         run: |
           curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\":\"❌ Alert: **Wolfi-Python** build failed! \nLogs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+          --data "{\"text\":\"❌ Alert: **Wolfi-Go** build failed! \nLogs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
           ${{ secrets.NOTIFICATION_WEBHOOK }}
