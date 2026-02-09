@@ -28,12 +28,13 @@ jobs:
 
       - name: Build ${{ matrix.arch }} Locally
         run: |
+          mkdir -p sbom-${{ matrix.arch }}
           docker run --rm -v "${{ github.workspace }}":/work -w /work \
             cgr.dev/chainguard/apko:latest build \
             images/wolfi-java/wolfi-java.yaml \
             kenzman/mpnt-wolfi-java:${{ matrix.arch }} \
             ${{ matrix.tar }} --arch ${{ matrix.arch }} \
-            --sbom-path ${{ matrix.arch }}-sbom.spdx.json
+            --sbom-path sbom-${{ matrix.arch }}
 
       - name: Scan ${{ matrix.arch }} Tarball
         uses: aquasecurity/trivy-action@master
@@ -47,7 +48,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: java-sbom-${{ matrix.arch }}
-          path: ${{ matrix.arch }}-sbom.spdx.json
+          path: sbom-${{ matrix.arch }}/
 
   publish-and-sign:
     needs: scan-architectures
@@ -68,19 +69,20 @@ jobs:
 
       - name: Final Publish Multi-Arch
         run: |
+          mkdir -p sbom-final
           docker run --rm \
             -v "${{ github.workspace }}":/work -w /work \
             -e DOCKER_CONFIG=/root/.docker -v /home/runner/.docker:/root/.docker \
             cgr.dev/chainguard/apko:latest publish \
             images/wolfi-java/wolfi-java.yaml \
             ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:latest \
-            --sbom-path java-final-sbom.spdx.json
+            --sbom-path sbom-final
 
       - name: Upload Final SBOM
         uses: actions/upload-artifact@v4
         with:
           name: java-sbom-final
-          path: java-final-sbom.spdx.json
+          path: sbom-final/
 
       - name: Extract Version & Tags
         run: |
@@ -118,7 +120,8 @@ jobs:
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
           DIGEST="${{ env.IMAGE_DIGEST }}"
-          cosign attach sbom --sbom java-final-sbom.spdx.json "${REPO}@${DIGEST}"
+          SBOM_FILE=$(ls sbom-final/*.spdx.json | head -1)
+          cosign attach sbom --sbom "${SBOM_FILE}" "${REPO}@${DIGEST}"
 
       - name: Generate Build Summary
         run: |
