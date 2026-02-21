@@ -2,20 +2,22 @@
 
 ![Security Status](https://img.shields.io/badge/Security-0--CVE-brightgreen)
 ![Build Status](https://img.shields.io/badge/Build-Verified-blue)
-![Java Version](https://img.shields.io/badge/Java-24-orange)
+![Java Version](https://img.shields.io/badge/Java-17_|_21_|_24_|_25-orange)
 ![Go Version](https://img.shields.io/badge/Go-1.24-00ADD8)
+![Node Version](https://img.shields.io/badge/Node-20_|_22_|_24-339933)
 ![Python Version](https://img.shields.io/badge/Python-3.13-3776AB)
 ![Provenance](https://img.shields.io/badge/Signed-Cosign-blueviolet)
 ![SBOM](https://img.shields.io/badge/SBOM-SPDX-blue)
 
-This repository maintains the **Organization’s Gold Standard** for container environments. It utilizes the [Wolfi (Chainguard)](https://wolfi.dev/) ecosystem to provide minimalist, high-performance, and cryptographically signed runtimes for Java, Python, and Go.
+This repository maintains the **Organization’s Gold Standard** for container environments. It utilizes the [Wolfi (Chainguard)](https://wolfi.dev/) ecosystem to provide minimalist, high-performance, and cryptographically signed runtimes for Java, Node.js, Python, and Go.
 
 ---
 
 ## Security & Build Dashboard
 | Base Image | Build Status | Security Scan | Registry |
 | :--- | :--- | :--- | :--- |
-| **Wolfi-Java** | [![Java Status](https://github.com/Ekene95/secops-base-images/actions/workflows/java-ci.yaml/badge.svg)](https://github.com/Ekene95/secops-base-images/actions/workflows/java-ci.yaml) | ![Trivy](https://img.shields.io/badge/trivy-verified-brightgreen?logo=trivy) | [Docker Hub](https://hub.docker.com/r/kenzman/mpnt-wolfi-java) |
+| **Wolfi-Java** (17/21/24/25) | [![Java Status](https://github.com/Ekene95/secops-base-images/actions/workflows/java-ci.yaml/badge.svg)](https://github.com/Ekene95/secops-base-images/actions/workflows/java-ci.yaml) | ![Trivy](https://img.shields.io/badge/trivy-verified-brightgreen?logo=trivy) | [Docker Hub](https://hub.docker.com/r/kenzman/mpnt-wolfi-java) |
+| **Wolfi-Node** (20/22/24) | [![Node Status](https://github.com/Ekene95/secops-base-images/actions/workflows/node-ci.yaml/badge.svg)](https://github.com/Ekene95/secops-base-images/actions/workflows/node-ci.yaml) | ![Trivy](https://img.shields.io/badge/trivy-verified-brightgreen?logo=trivy) | [Docker Hub](https://hub.docker.com/r/kenzman/ns-wolfi-node) |
 | **Wolfi-Python** | [![Python Status](https://github.com/Ekene95/secops-base-images/actions/workflows/py-ci.yaml/badge.svg)](https://github.com/Ekene95/secops-base-images/actions/workflows/py-ci.yaml) | ![Trivy](https://img.shields.io/badge/trivy-verified-brightgreen?logo=trivy) | [Docker Hub](https://hub.docker.com/r/kenzman/ns-wolfi-python) |
 | **Wolfi-Go** | [![Go Status](https://github.com/Ekene95/secops-base-images/actions/workflows/go-ci.yaml/badge.svg)](https://github.com/Ekene95/secops-base-images/actions/workflows/go-ci.yaml) | ![Trivy](https://img.shields.io/badge/trivy-verified-brightgreen?logo=trivy) | [Docker Hub](https://hub.docker.com/r/kenzman/ns-wolfi-go) |
 

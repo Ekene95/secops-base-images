@@ -1,5 +1,10 @@
 # Build/test archives
 *.tar
 
-# SBOMs
+# Windows OS Files
+*.Identifier
+*:Zone.Identifier
+
+# SBOM directories and files
+sbom-*/
 sbom-*.spdx.json

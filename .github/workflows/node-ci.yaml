@@ -1,12 +1,12 @@
-name: Build and Push Wolfi Java Image
+name: Build and Push Wolfi Node Image
 
 on:
   push:
     branches: [ master ]
     paths:
-      - 'images/wolfi-java/**'
+      - 'images/wolfi-node/**'
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 5 * * *'
   workflow_dispatch:
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        version: ['17', '21', '24', '25']
+        version: ['20', '22', '24']
         arch: [x86_64, aarch64]
         include:
           - arch: x86_64
@@ -27,30 +27,21 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Determine Config YAML
-        id: pick-config
-        run: |
-          if [ "${{ matrix.version }}" == "24" ]; then
-            echo "config=images/wolfi-java/wolfi-java.yaml" >> $GITHUB_OUTPUT
-          else
-            echo "config=images/wolfi-java/wolfi-java-${{ matrix.version }}.yaml" >> $GITHUB_OUTPUT
-          fi
-
       - name: Build ${{ matrix.version }} on ${{ matrix.arch }} Locally
         run: |
-          CONFIG_FILE="${{ steps.pick-config.outputs.config }}"
+          CONFIG_FILE="images/wolfi-node/wolfi-node-${{ matrix.version }}.yaml"
           mkdir -p sbom-${{ matrix.version }}-${{ matrix.arch }}
           docker run --rm -v "${{ github.workspace }}":/work -w /work \
             cgr.dev/chainguard/apko:latest build \
             $CONFIG_FILE \
-            kenzman/mpnt-wolfi-java:${{ matrix.version }}-${{ matrix.arch }} \
-            java-${{ matrix.version }}-${{ matrix.tar }} --arch ${{ matrix.arch }} \
+            kenzman/ns-wolfi-node:${{ matrix.version }}-${{ matrix.arch }} \
+            node-${{ matrix.version }}-${{ matrix.tar }} --arch ${{ matrix.arch }} \
             --sbom-path sbom-${{ matrix.version }}-${{ matrix.arch }}
 
       - name: Scan ${{ matrix.version }} ${{ matrix.arch }} Tarball
         uses: aquasecurity/trivy-action@master
         with:
-          input: 'java-${{ matrix.version }}-${{ matrix.tar }}'
+          input: 'node-${{ matrix.version }}-${{ matrix.tar }}'
           format: 'table'
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
@@ -58,7 +49,7 @@ jobs:
       - name: Upload SBOM Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: java-sbom-${{ matrix.version }}-${{ matrix.arch }}
+          name: node-sbom-${{ matrix.version }}-${{ matrix.arch }}
           path: sbom-${{ matrix.version }}-${{ matrix.arch }}/
 
   publish-and-sign:
@@ -67,7 +58,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        version: ['17', '21', '24', '25']
+        version: ['20', '22', '24']
     permissions:
       contents: read
       packages: write
@@ -81,66 +72,51 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          
-      - name: Determine Config YAML
-        id: pick-config
-        run: |
-          if [ "${{ matrix.version }}" == "24" ]; then
-            echo "config=images/wolfi-java/wolfi-java.yaml" >> $GITHUB_OUTPUT
-          else
-            echo "config=images/wolfi-java/wolfi-java-${{ matrix.version }}.yaml" >> $GITHUB_OUTPUT
-          fi
 
       - name: Final Publish Multi-Arch
         run: |
-          CONFIG_FILE="${{ steps.pick-config.outputs.config }}"
+          CONFIG_FILE="images/wolfi-node/wolfi-node-${{ matrix.version }}.yaml"
           mkdir -p sbom-final-${{ matrix.version }}
-          # Determine the docker tag
-          TAG="${{ matrix.version }}"
-          if [ "${TAG}" == "24" ]; then
-             TAG="latest"
-          fi
           
           docker run --rm \
             -v "${{ github.workspace }}":/work -w /work \
             -e DOCKER_CONFIG=/root/.docker -v /home/runner/.docker:/root/.docker \
             cgr.dev/chainguard/apko:latest publish \
             $CONFIG_FILE \
-            ${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java:${TAG} \
+            ${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-node:${{ matrix.version }} \
             --sbom-path sbom-final-${{ matrix.version }}
 
       - name: Upload Final SBOM
         uses: actions/upload-artifact@v4
         with:
-          name: java-sbom-final-${{ matrix.version }}
+          name: node-sbom-final-${{ matrix.version }}
           path: sbom-final-${{ matrix.version }}/
 
       - name: Extract Version & Tags
         run: |
-          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-node"
           TAG="${{ matrix.version }}"
-          if [ "${TAG}" == "24" ]; then
-             TAG="latest"
-          fi
           
           docker pull ${REPO}:${TAG}
-          JAVA_VER=$(docker run --rm ${REPO}:${TAG} java -version 2>&1 | awk -F '"' '/version/ {print $2}')
-          MAJOR_VER=$(echo $JAVA_VER | cut -d. -f1)
-          echo "JAVA_FULL_VER=$JAVA_VER" >> $GITHUB_ENV
+          NODE_VER=$(docker run --rm ${REPO}:${TAG} node --version | sed 's/v//')
+          MAJOR_VER=$(echo $NODE_VER | cut -d. -f1)
+          echo "NODE_FULL_VER=$NODE_VER" >> $GITHUB_ENV
           
-          # We manually tag the exact versions just loaded
-          docker buildx imagetools create -t ${REPO}:${JAVA_VER} ${REPO}:${TAG}
-          # Create a separate major version pointer (e.g. :17 pointing to the specific 17.x.x) if differing from normal TAG logic
+          docker buildx imagetools create -t ${REPO}:${NODE_VER} ${REPO}:${TAG}
           docker buildx imagetools create -t ${REPO}:${MAJOR_VER} ${REPO}:${TAG}
+          
+          # If it is version 24, also tag it as latest
+          if [ "${TAG}" == "24" ]; then
+             docker buildx imagetools create -t ${REPO}:latest ${REPO}:${TAG}
+          fi
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@main
 
       - name: Sign and Verify (Audit)
         run: |
-          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
-          # Sign the newly extracted exact full version tag
-          TAG="${{ env.JAVA_FULL_VER }}"
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-node"
+          TAG="${{ env.NODE_FULL_VER }}"
           DIGEST=$(docker buildx imagetools inspect ${REPO}:${TAG} --format '{{json .Manifest.Digest}}' | tr -d '"')
           echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
           
@@ -167,19 +143,19 @@ jobs:
 
       - name: Attach SBOM to Image
         run: |
-          REPO="${{ secrets.DOCKERHUB_USERNAME }}/mpnt-wolfi-java"
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/ns-wolfi-node"
           DIGEST="${{ env.IMAGE_DIGEST }}"
           SBOM_FILE=$(ls sbom-final-${{ matrix.version }}/*.spdx.json | head -1)
           cosign attach sbom --sbom "${SBOM_FILE}" "${REPO}@${DIGEST}"
 
       - name: Generate Build Summary
         run: |
-          echo "### Build Successful for Java ${{ matrix.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Successful for Node ${{ matrix.version }}" >> $GITHUB_STEP_SUMMARY
           echo "Signed and verified multi-arch manifest: \`${{ env.IMAGE_DIGEST }}\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Notify on Failure
         if: failure()
         run: |
           curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\":\"❌ Alert: Build or Security Scan failed for Java ${{ matrix.version }}! \nCheck logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+          --data "{\"text\":\"❌ Alert: Build or Security Scan failed for Node ${{ matrix.version }}! \nCheck logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
           ${{ secrets.NOTIFICATION_WEBHOOK }}

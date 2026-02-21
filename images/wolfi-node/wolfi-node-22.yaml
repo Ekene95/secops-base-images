@@ -1,0 +1,27 @@
+contents:
+  repositories:
+    - https://packages.wolfi.dev/os
+  keyring:
+    - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+  packages:
+    - wolfi-base
+    - nodejs-22
+    - npm
+    - ca-certificates-bundle
+
+accounts:
+  groups:
+    - groupname: appgroup
+      gid: 1000
+  users:
+    - username: appuser
+      uid: 1000
+      gid: 1000
+  run-as: appuser
+
+environment:
+  PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+archs:
+  - x86_64
+  - aarch64
