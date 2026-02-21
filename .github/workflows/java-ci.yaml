@@ -128,10 +128,16 @@ jobs:
           MAJOR_VER=$(echo $JAVA_VER | cut -d. -f1)
           echo "JAVA_FULL_VER=$JAVA_VER" >> $GITHUB_ENV
           
-          # We manually tag the exact versions just loaded
+          # We manually tag the exact full version (e.g. 17.0.14)
           docker buildx imagetools create -t ${REPO}:${JAVA_VER} ${REPO}:${TAG}
-          # Create a separate major version pointer (e.g. :17 pointing to the specific 17.x.x) if differing from normal TAG logic
+          
+          # We tag the major version (e.g. 17)
           docker buildx imagetools create -t ${REPO}:${MAJOR_VER} ${REPO}:${TAG}
+          
+          # If matrix version is 24, also explicitly ensure latest is tagged/updated
+          if [ "${{ matrix.version }}" == "24" ]; then
+             docker buildx imagetools create -t ${REPO}:latest ${REPO}:${TAG}
+          fi
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@main

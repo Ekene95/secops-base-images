@@ -91,8 +91,15 @@ jobs:
           PY_FULL_VER=$(docker run --rm ${REPO}:latest python --version | cut -d' ' -f2)
           PY_MAJOR_VER=$(echo $PY_FULL_VER | cut -d. -f1-2)
           echo "PY_VER=$PY_FULL_VER" >> $GITHUB_ENV
+          
+          # Exact version
           docker buildx imagetools create -t ${REPO}:${PY_FULL_VER} ${REPO}:latest
+          
+          # Major version
           docker buildx imagetools create -t ${REPO}:${PY_MAJOR_VER} ${REPO}:latest
+          
+          # Latest
+          docker buildx imagetools create -t ${REPO}:latest ${REPO}:latest
 
       - name: Install Cosign & Sign
         uses: sigstore/cosign-installer@main

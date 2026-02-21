@@ -91,8 +91,15 @@ jobs:
           GO_VER=$(docker run --rm ${REPO}:latest go version | awk '{print $3}' | sed 's/go//')
           MAJOR_VER=$(echo $GO_VER | cut -d. -f1-2)
           echo "GO_FULL_VER=$GO_VER" >> $GITHUB_ENV
+          
+          # Exact version
           docker buildx imagetools create -t ${REPO}:${GO_VER} ${REPO}:latest
+          
+          # Major version
           docker buildx imagetools create -t ${REPO}:${MAJOR_VER} ${REPO}:latest
+          
+          # Latest
+          docker buildx imagetools create -t ${REPO}:latest ${REPO}:latest
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@main

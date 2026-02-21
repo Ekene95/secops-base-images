@@ -102,10 +102,13 @@ jobs:
           MAJOR_VER=$(echo $NODE_VER | cut -d. -f1)
           echo "NODE_FULL_VER=$NODE_VER" >> $GITHUB_ENV
           
+          # We manually tag the exact full version (e.g. 24.1.0)
           docker buildx imagetools create -t ${REPO}:${NODE_VER} ${REPO}:${TAG}
+          
+          # We tag the major version (e.g. 24)
           docker buildx imagetools create -t ${REPO}:${MAJOR_VER} ${REPO}:${TAG}
           
-          # If it is version 24, also tag it as latest
+          # If it is matrix version 24, also tag it as latest
           if [ "${TAG}" == "24" ]; then
              docker buildx imagetools create -t ${REPO}:latest ${REPO}:${TAG}
           fi
