@@ -48,7 +48,7 @@ jobs:
             --sbom-path sbom-${{ matrix.version }}-${{ matrix.arch }}
 
       - name: Scan ${{ matrix.version }} ${{ matrix.arch }} Tarball
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           input: 'java-${{ matrix.version }}-${{ matrix.tar }}'
           format: 'table'
