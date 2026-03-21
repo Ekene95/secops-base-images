@@ -11,3 +11,11 @@ sbom-*.spdx.json
 
 #claude files
 claude.md
+
+#artile 
+dev_to_article.md
+final_dev_article.md
+
+#git files
+.git
+.gitignore
