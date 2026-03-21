@@ -102,7 +102,7 @@ jobs:
           tag: ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:${{ inputs.target_tag }}
           generic-user: ${{ secrets.DOCKERHUB_USERNAME }}
           generic-pass: ${{ secrets.DOCKERHUB_TOKEN }}
-          annotations: org.opencontainers.image.source=https://github.com/${{ github.repository }},org.opencontainers.image.revision=${{ github.sha }},org.opencontainers.image.vendor=NetShield Secure Runtime
+          annotations: org.opencontainers.image.source:https://github.com/${{ github.repository }},org.opencontainers.image.revision:${{ github.sha }},org.opencontainers.image.vendor:NetShield-Secure-Runtime
 
       - name: Tag Version Aliases
         run: |
