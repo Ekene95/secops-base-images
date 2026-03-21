@@ -1,0 +1,25 @@
+name: Build Python
+on:
+  push:
+    paths: [ 'images/wolfi-python/**' ]
+  repository_dispatch:
+    types: [ cve-rebuild-trigger ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  trigger-factory:
+    uses: ./.github/workflows/factory-engine.yaml
+    with:
+      runtime: "python"
+      config_path: "images/wolfi-python/wolfi-python.yaml"
+      repo_name: "ns-wolfi-python"
+      target_tag: "latest"
+      version_cmd: "python --version | cut -d' ' -f2"
+      major_version_cmd: "cut -d. -f1-2"
+    secrets: inherit

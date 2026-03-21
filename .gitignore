@@ -8,3 +8,6 @@
 # SBOM directories and files
 sbom-*/
 sbom-*.spdx.json
+
+#claude files
+claude.md
