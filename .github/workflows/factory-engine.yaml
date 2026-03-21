@@ -107,23 +107,29 @@ jobs:
       - name: Tag Version Aliases
         run: |
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}"
-          DIGEST="${{ steps.apko-publish.outputs.digest }}"
-          docker buildx imagetools create -t ${REPO}:${{ steps.tags.outputs.full_tag }} ${REPO}@${DIGEST}
-          docker buildx imagetools create -t ${REPO}:${{ steps.tags.outputs.major_tag }} ${REPO}@${DIGEST}
+          FULL_REF="${{ steps.apko-publish.outputs.digest }}"
+          docker buildx imagetools create -t ${REPO}:${{ steps.tags.outputs.full_tag }} ${FULL_REF}
+          docker buildx imagetools create -t ${REPO}:${{ steps.tags.outputs.major_tag }} ${FULL_REF}
 
       - name: Scan Final Multi-Arch Image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
-          image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}@${{ steps.apko-publish.outputs.digest }}'
+          image-ref: '${{ steps.apko-publish.outputs.digest }}'
           format: 'table'
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
 
       - name: Generate SLSA Provenance
+        id: slsa
+        run: |
+          DIGEST_HASH=$(echo "${{ steps.apko-publish.outputs.digest }}" | grep -o 'sha256:.*')
+          echo "digest_hash=$DIGEST_HASH" >> $GITHUB_OUTPUT
+
+      - name: Attest Build Provenance
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
         with:
           subject-name: index.docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}
-          subject-digest: ${{ steps.apko-publish.outputs.digest }}
+          subject-digest: ${{ steps.slsa.outputs.digest_hash }}
           push-to-registry: true
 
       - name: Install Cosign
@@ -131,4 +137,4 @@ jobs:
 
       - name: Sign Image
         run: |
-          cosign sign --yes "${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}@${{ steps.apko-publish.outputs.digest }}"
+          cosign sign --yes "${{ steps.apko-publish.outputs.digest }}"
