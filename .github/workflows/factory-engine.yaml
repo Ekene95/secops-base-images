@@ -1,0 +1,125 @@
+name: "Runtime Factory Engine"
+
+on:
+  workflow_call:
+    inputs:
+      runtime: { required: true, type: string }
+      config_path: { required: true, type: string }
+      repo_name: { required: true, type: string }
+      target_tag: { required: true, type: string }
+      version_cmd: { required: true, type: string }
+      major_version_cmd: { required: true, type: string }
+    secrets:
+      DOCKERHUB_USERNAME: { required: true }
+      DOCKERHUB_TOKEN: { required: true }
+      NOTIFICATION_WEBHOOK: { required: true }
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.runtime }}-${{ inputs.target_tag }}
+  cancel-in-progress: true
+
+jobs:
+  scan-architectures:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Build ${{ matrix.arch }} Locally
+        uses: chainguard-images/actions/apko-build@4fa9bfd4edfee4819655453b44accb99f4cc588d
+        with:
+          config: ${{ inputs.config_path }}
+          tag: ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:local
+          archs: ${{ matrix.arch }}
+          tarball: ${{ inputs.runtime }}-${{ matrix.arch }}.tar
+
+      - name: Upload Local Tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarball-${{ inputs.runtime }}-${{ matrix.arch }}
+          path: ${{ inputs.runtime }}-${{ matrix.arch }}.tar
+          retention-days: 1
+
+      - name: Scan Local Tarball
+        uses: aquasecurity/trivy-action@6e7b7d1fd3e722d42a97280aa2d2ee667541133d
+        with:
+          input: '${{ inputs.runtime }}-${{ matrix.arch }}.tar'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+
+  publish-and-sign:
+    needs: scan-architectures
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+
+      - name: Download Local Tarballs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tarball-${{ inputs.runtime }}-*
+          path: /tmp/images
+          merge-multiple: true
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract Versions Locally (Approach 2)
+        id: tags
+        run: |
+          docker load < /tmp/images/${{ inputs.runtime }}-x86_64.tar
+          
+          FULL_VER=$(docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:local sh -c "${{ inputs.version_cmd }}" || echo "failed")
+          if [ "$FULL_VER" == "failed" ] || [ -z "$FULL_VER" ]; then exit 1; fi
+          
+          MAJOR_VER=$(echo $FULL_VER | sh -c "${{ inputs.major_version_cmd }}")
+          
+          echo "full_tag=$FULL_VER" >> $GITHUB_OUTPUT
+          echo "major_tag=$MAJOR_VER" >> $GITHUB_OUTPUT
+
+      - name: Publish with Apko Action
+        id: apko-publish
+        uses: chainguard-images/actions/apko-publish@4fa9bfd4edfee4819655453b44accb99f4cc588d
+        with:
+          config: ${{ inputs.config_path }}
+          tag: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:${{ inputs.target_tag }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:${{ steps.tags.outputs.major_tag }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:${{ steps.tags.outputs.full_tag }}
+          annotations: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.vendor=NetShield Secure Runtime
+
+      - name: Scan Final Multi-Arch Image
+        uses: aquasecurity/trivy-action@6e7b7d1fd3e722d42a97280aa2d2ee667541133d
+        with:
+          image-ref: '${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}@${{ steps.apko-publish.outputs.digest }}'
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Generate SLSA Provenance
+        uses: actions/attest-build-provenance@c0130f146f48a1d7c355f3be4c4f03d92f7c07b4
+        with:
+          subject-name: index.docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}
+          subject-digest: ${{ steps.apko-publish.outputs.digest }}
+          push-to-registry: true
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@59ac5c2d700994058d6da922244830a21033c593
+
+      - name: Sign Image
+        run: |
+          cosign sign --yes "${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}@${{ steps.apko-publish.outputs.digest }}"

@@ -1,0 +1,19 @@
+name: Build Go
+on:
+  push:
+    paths: [ 'images/wolfi-go/**' ]
+  repository_dispatch:
+    types: [ cve-rebuild-trigger ]
+  workflow_dispatch:
+
+jobs:
+  trigger-factory:
+    uses: ./.github/workflows/factory-engine.yaml
+    with:
+      runtime: "go"
+      config_path: "images/wolfi-go/wolfi-go.yaml"
+      repo_name: "ns-wolfi-go"
+      target_tag: "latest"
+      version_cmd: "go version | awk '{print $3}' | sed 's/go//'"
+      major_version_cmd: "cut -d. -f1-2"
+    secrets: inherit

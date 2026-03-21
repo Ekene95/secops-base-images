@@ -1,0 +1,35 @@
+name: Build Java
+on:
+  push:
+    paths: [ 'images/wolfi-java/**' ]
+  repository_dispatch:
+    types: [ cve-rebuild-trigger ]
+  workflow_dispatch:
+
+jobs:
+  discover-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.get-versions.outputs.versions }}
+    steps:
+      - name: Get Wolfi Java Versions
+        id: get-versions
+        run: |
+          # Automated Discovery Logic
+          VERSIONS=$(curl -s https://packages.wolfi.dev/os/x86_64/APKINDEX.tar.gz | tar -xOz APKINDEX | grep -oP 'openjdk-\d+' | cut -d- -f2 | sort -uV | grep -E '17|21|24|25' | jq -R . | jq -s -c .)
+          echo "versions=$VERSIONS" >> $GITHUB_OUTPUT
+
+  trigger-factory:
+    needs: discover-versions
+    strategy:
+      matrix:
+        version: ${{ fromJson(needs.discover-versions.outputs.versions) }}
+    uses: ./.github/workflows/factory-engine.yaml
+    with:
+      runtime: "java"
+      config_path: ${{ matrix.version == '24' && 'images/wolfi-java/wolfi-java.yaml' || format('images/wolfi-java/wolfi-java-{0}.yaml', matrix.version) }}
+      repo_name: "mpnt-wolfi-java"
+      target_tag: ${{ matrix.version == '24' && 'latest' || matrix.version }}
+      version_cmd: "java -version 2>&1 | awk -F '\"' '/version/ {print $2}'"
+      major_version_cmd: "cut -d. -f1"
+    secrets: inherit
