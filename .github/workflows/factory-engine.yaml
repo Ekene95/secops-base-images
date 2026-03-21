@@ -79,13 +79,16 @@ jobs:
 
       - name: Extract Versions Locally (Approach 2)
         id: tags
+        env:
+          VERSION_CMD: ${{ inputs.version_cmd }}
+          MAJOR_VERSION_CMD: ${{ inputs.major_version_cmd }}
         run: |
           docker load < /tmp/images/${{ inputs.runtime }}-x86_64.tar
           
-          FULL_VER=$(docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:local sh -c "${{ inputs.version_cmd }}" || echo "failed")
+          FULL_VER=$(echo "$VERSION_CMD" | docker run -i --rm ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:local sh || echo "failed")
           if [ "$FULL_VER" == "failed" ] || [ -z "$FULL_VER" ]; then exit 1; fi
           
-          MAJOR_VER=$(echo $FULL_VER | sh -c "${{ inputs.major_version_cmd }}")
+          MAJOR_VER=$(echo "$FULL_VER" | sh -c "$MAJOR_VERSION_CMD")
           
           echo "full_tag=$FULL_VER" >> $GITHUB_OUTPUT
           echo "major_tag=$MAJOR_VER" >> $GITHUB_OUTPUT
