@@ -113,7 +113,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Generate SLSA Provenance
-        uses: actions/attest-build-provenance@c0130f146f48a1d7c355f3be4c4f03d92f7c07b4
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
         with:
           subject-name: index.docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}
           subject-digest: ${{ steps.apko-publish.outputs.digest }}
