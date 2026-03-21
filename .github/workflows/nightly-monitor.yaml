@@ -10,7 +10,7 @@ jobs:
         image: [ns-wolfi-go, mpnt-wolfi-java, ns-wolfi-python, ns-wolfi-node]
     steps:
       - name: Scan Registry
-        uses: aquasecurity/trivy-action@6e7b7d1fd3e722d42a97280aa2d2ee667541133d
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           image-ref: 'docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest'
           format: 'json'

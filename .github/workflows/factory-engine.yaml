@@ -45,7 +45,7 @@ jobs:
           retention-days: 1
 
       - name: Scan Local Tarball
-        uses: aquasecurity/trivy-action@6e7b7d1fd3e722d42a97280aa2d2ee667541133d
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           input: '${{ inputs.runtime }}-${{ matrix.arch }}.tar'
           exit-code: '1'
