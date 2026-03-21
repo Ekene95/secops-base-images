@@ -9,7 +9,7 @@
 ![SLSA](https://img.shields.io/badge/SLSA-Level_3-purple)
 ![Provenance](https://img.shields.io/badge/Signed-Cosign-blueviolet)
 
-This repository maintains the **Organization’s Gold Standard Runtime Factory**. It utilizes the [Wolfi (Chainguard)](https://wolfi.dev/) ecosystem to dynamically compile, test, and cryptographically attest minimalist, high-performance runtimes for Java, Node.js, Python, and Go entirely from source.
+This repository maintains **Organization’s Gold Standard Runtime Factory**. It utilizes the [Wolfi (Chainguard)](https://wolfi.dev/) ecosystem to dynamically compile, test, and cryptographically attest minimalist, high-performance runtimes for Java, Node.js, Python, and Go entirely from source.
 
 ---
 
@@ -32,7 +32,7 @@ Unlike legacy standard images (e.g., `openjdk:alpine` or `debian-slim`), these i
 * **Dynamic Version Discovery:** Workflows natively fetch the upstream Wolfi package index daily and execute a dynamic build matrix (e.g., testing Java 17, 21, 24, and 25 matrix nodes automatically).
 * **Self-Healing Nightly Monitor:** A central `nightly-monitor` workflow scans the live production containers. If an upstream CVE drops, it automatically triggers a repository dispatch to dynamically recompile and patch the affected runtime.
 * **SLSA Provenance (L3):** In addition to Cosign signing, every multi-arch Docker artifact gets an attached cryptographic build materials provenance mapping its origin directly back to the GitHub workflow `factory-engine.yaml` SHA block.
-* **Zero Known Vulnerabilities (CVEs):** Maintained via continuous rolling updates and apko compilation.
+* **Zero Known CVEs at build-time:** Maintained via continuous rolling updates and apko compilation.
 * **Performance:** Built with `glibc` for superior execution speed over `musl`-based alpine containers, while maintaining a 70% smaller footprint.
 
 ---
@@ -57,7 +57,7 @@ WORKDIR /home/appuser
 # Copy the artifact from build stage
 COPY --from=build /app/target/*.jar app.jar
 
-# Application inherits the 0-CVE OS and non-root execution context natively!
+# Application inherits the near 0-CVE OS and non-root execution context natively!
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
