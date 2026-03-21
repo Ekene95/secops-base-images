@@ -83,7 +83,8 @@ jobs:
           VERSION_CMD: ${{ inputs.version_cmd }}
           MAJOR_VERSION_CMD: ${{ inputs.major_version_cmd }}
         run: |
-          docker load < /tmp/images/${{ inputs.runtime }}-x86_64.tar
+          LOADED_TAG=$(docker load < /tmp/images/${{ inputs.runtime }}-x86_64.tar | awk '{print $NF}')
+          docker tag "$LOADED_TAG" ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:local
           
           FULL_VER=$(echo "$VERSION_CMD" | docker run -i --rm ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:local sh || echo "failed")
           if [ "$FULL_VER" == "failed" ] || [ -z "$FULL_VER" ]; then exit 1; fi
