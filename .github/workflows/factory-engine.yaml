@@ -99,14 +99,17 @@ jobs:
         uses: chainguard-images/actions/apko-publish@4fa9bfd4edfee4819655453b44accb99f4cc588d
         with:
           config: ${{ inputs.config_path }}
-          tag: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:${{ inputs.target_tag }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:${{ steps.tags.outputs.major_tag }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:${{ steps.tags.outputs.full_tag }}
-          annotations: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.vendor=NetShield Secure Runtime
+          tag: ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:${{ inputs.target_tag }}
+          generic-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          generic-pass: ${{ secrets.DOCKERHUB_TOKEN }}
+          annotations: org.opencontainers.image.source=https://github.com/${{ github.repository }},org.opencontainers.image.revision=${{ github.sha }},org.opencontainers.image.vendor=NetShield Secure Runtime
+
+      - name: Tag Version Aliases
+        run: |
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}"
+          DIGEST="${{ steps.apko-publish.outputs.digest }}"
+          docker buildx imagetools create -t ${REPO}:${{ steps.tags.outputs.full_tag }} ${REPO}@${DIGEST}
+          docker buildx imagetools create -t ${REPO}:${{ steps.tags.outputs.major_tag }} ${REPO}@${DIGEST}
 
       - name: Scan Final Multi-Arch Image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
