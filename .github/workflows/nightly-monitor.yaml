@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image: [ns-wolfi-go, mpnt-wolfi-java, ns-wolfi-python, ns-wolfi-node]
+        image: [ns-wolfi-go, ns-wolfi-go-runtime, mpnt-wolfi-java, ns-wolfi-python, ns-wolfi-node]
     steps:
 
       - name: Pull fresh image
