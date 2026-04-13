@@ -85,12 +85,21 @@ jobs:
         run: |
           LOADED_TAG=$(docker load < /tmp/images/${{ inputs.runtime }}-x86_64.tar | awk '{print $NF}')
           docker tag "$LOADED_TAG" ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:local
-          
-          FULL_VER=$(echo "$VERSION_CMD" | docker run -i --rm ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:local sh || echo "failed")
-          if [ "$FULL_VER" == "failed" ] || [ -z "$FULL_VER" ]; then exit 1; fi
-          
+
+          if [ -n "$VERSION_CMD" ]; then
+            FULL_VER=$(docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.repo_name }}:local \
+              sh -c "$VERSION_CMD" 2>/dev/null || echo "")
+          fi
+
+          if [ -z "$FULL_VER" ]; then
+            FULL_VER=$(grep -oP '[0-9]+\.[0-9]+\.[0-9]+' ${{ inputs.config_path }} | head -1)
+          fi
+
+          if [ -z "$FULL_VER" ]; then
+            echo "ERROR: Could not determine version" && exit 1
+          fi
+
           MAJOR_VER=$(echo "$FULL_VER" | sh -c "$MAJOR_VERSION_CMD")
-          
           echo "full_tag=$FULL_VER" >> $GITHUB_OUTPUT
           echo "major_tag=$MAJOR_VER" >> $GITHUB_OUTPUT
 
