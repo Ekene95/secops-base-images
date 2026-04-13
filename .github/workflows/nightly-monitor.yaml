@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image: [ns-wolfi-go, mpnt-wolfi-java, ns-wolfi-python, ns-wolfi-node]
+        image: [mpnt-wolfi-java, ns-wolfi-go, ns-wolfi-python, ns-wolfi-node]
     steps:
       - name: Scan Registry
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
