@@ -20,6 +20,6 @@ jobs:
       config_path: "images/wolfi-go/wolfi-go.yaml"
       repo_name: "ns-wolfi-go"
       target_tag: "latest"
-      version_cmd: "go version | awk '{print $3}' | sed 's/go//'"
+      version_cmd: ""
       major_version_cmd: "cut -d. -f1-2"
     secrets: inherit

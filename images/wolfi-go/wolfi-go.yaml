@@ -18,8 +18,7 @@ accounts:
   run-as: appuser
 
 environment:
-  GOPATH: /home/appuser/go
-  PATH: /usr/lib/go/bin:/home/appuser/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 archs:
   - x86_64
