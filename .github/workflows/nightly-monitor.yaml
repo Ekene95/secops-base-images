@@ -1,9 +1,7 @@
 name: Nightly CVE Monitor
 on:
-  push:
-    branches: [ test/view-results-json ]
-#  schedule:
-#    - cron: '0 0 * * *'
+  schedule:
+    - cron: '0 0 * * *'
 jobs:
   monitor:
     runs-on: ubuntu-latest
@@ -21,15 +19,6 @@ jobs:
           image-ref: 'docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest'
           format: 'json'
           output: 'results.json'
-      
-      - name: View output of results json file
-        run: cat results.json
-      
-      - name: Upload a Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-results-${{ matrix.image }}
-          path: results.json
 
       - name: Verify scanned digest
         run: |
