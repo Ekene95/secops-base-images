@@ -9,19 +9,33 @@ jobs:
       matrix:
         image: [ns-wolfi-go, mpnt-wolfi-java, ns-wolfi-python, ns-wolfi-node]
     steps:
+
+      - name: Pull fresh image
+        run: docker pull docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest
+
       - name: Scan Registry
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           image-ref: 'docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest'
           format: 'json'
           output: 'results.json'
-      - name: View output of results json file
-        run: cat results.json
+
+      - name: Verify scanned digest
+        run: |
+          docker inspect docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest \
+            --format '{{index .RepoDigests 0}}'
+
       - name: Trigger Rebuild if Vulnerable
         run: |
-          COUNT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH")] | length' results.json)
-          if [ "$COUNT" -gt 0 ]; then
-            curl -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/dispatches \
-            -d "{\"event_type\": \"cve-rebuild-trigger\"}"
-          fi
+           COUNT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH" or .Severity=="MEDIUM")] | length' results.json)
+           echo "Vulnerability count: $COUNT"
+           if [ "$COUNT" -gt 0 ]; then
+              curl -f -X POST \
+                -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                https://api.github.com/repos/${{ github.repository }}/dispatches \
+                -d "{\"event_type\": \"cve-rebuild-trigger\"}"
+              echo "Rebuild triggered successfully"
+           else
+              echo "No vulnerabilities found, skipping rebuild"
+           fi
