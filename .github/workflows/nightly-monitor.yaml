@@ -17,8 +17,16 @@ jobs:
           image-ref: 'docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest'
           format: 'json'
           output: 'results.json'
+      
       - name: View output of results json file
         run: cat results.json
+      
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy scan results in json
+          path: results.json
+
       - name: Trigger Rebuild if Vulnerable
         run: |
           COUNT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH")] | length' results.json)
