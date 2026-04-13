@@ -6,7 +6,6 @@ contents:
   packages:
     - wolfi-base
     - nodejs-20
-    - npm
     - ca-certificates-bundle
 
 accounts:
