@@ -1,7 +1,9 @@
 name: Nightly CVE Monitor
 on:
-  schedule:
-    - cron: '0 0 * * *'
+  push:
+    branches: [ test/view-results-json ]
+#  schedule:
+#    - cron: '0 0 * * *'
 jobs:
   monitor:
     runs-on: ubuntu-latest
