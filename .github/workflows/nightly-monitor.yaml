@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image: [mpnt-wolfi-java, ns-wolfi-go, ns-wolfi-python, ns-wolfi-node]
+        image: [ns-wolfi-go, mpnt-wolfi-java, ns-wolfi-python, ns-wolfi-node]
     steps:
       - name: Scan Registry
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
@@ -24,7 +24,7 @@ jobs:
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: trivy scan results in json
+          name: trivy-results-${{ matrix.image }}
           path: results.json
 
       - name: Trigger Rebuild if Vulnerable
