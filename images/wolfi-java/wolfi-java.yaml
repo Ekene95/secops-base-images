@@ -5,8 +5,9 @@ contents:
     - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
   packages:
     - wolfi-base
-    - openjdk-24
     - ca-certificates-bundle
+    - openjdk-24-jre
+    - tzdata
 
 accounts:
   groups:
@@ -21,6 +22,8 @@ accounts:
 environment:
   JAVA_HOME: /usr/lib/jvm/java-24-openjdk
   PATH: /usr/lib/jvm/java-24-openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+  JAVA_TOOL_OPTIONS: "-Dfile.encoding=UTF-8 -Djava.security.egd=file:/dev/./urandom"
 
 archs:
   - x86_64
