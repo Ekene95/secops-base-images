@@ -13,12 +13,23 @@ jobs:
       - name: Pull fresh image
         run: docker pull docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest
 
-      - name: Scan Registry
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+      - name: Login to Docker Hub
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
         with:
-          image-ref: 'docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest'
-          format: 'json'
-          output: 'results.json'
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Scan with Docker Scout
+        id: scout
+        continue-on-error: true
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest
+          only-severities: critical,high,medium
+          exit-code: true
+          hub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          hub-pass: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Verify scanned digest
         run: |
@@ -26,16 +37,11 @@ jobs:
             --format '{{index .RepoDigests 0}}'
 
       - name: Trigger Rebuild if Vulnerable
+        if: steps.scout.outcome == 'failure'
         run: |
-           COUNT=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH" or .Severity=="MEDIUM")] | length' results.json)
-           echo "Vulnerability count: $COUNT"
-           if [ "$COUNT" -gt 0 ]; then
-              curl -f -X POST \
-                -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
-                -H "Accept: application/vnd.github+json" \
-                https://api.github.com/repos/${{ github.repository }}/dispatches \
-                -d "{\"event_type\": \"cve-rebuild-trigger\"}"
-              echo "Rebuild triggered successfully"
-           else
-              echo "No vulnerabilities found, skipping rebuild"
-           fi
+          curl -f -X POST \
+            -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/dispatches \
+            -d "{\"event_type\": \"cve-rebuild-trigger\"}"
+          echo "Rebuild triggered successfully"
