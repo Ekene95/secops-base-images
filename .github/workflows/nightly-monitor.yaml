@@ -27,9 +27,10 @@ jobs:
           command: cves
           image: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest
           only-severities: critical,high,medium
+          only-refresh: true
           exit-code: true
-          hub-user: ${{ secrets.DOCKERHUB_USERNAME }}
-          hub-pass: ${{ secrets.DOCKERHUB_TOKEN }}
+          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Verify scanned digest
         run: |
